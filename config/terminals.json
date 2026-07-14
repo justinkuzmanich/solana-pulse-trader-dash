@@ -1,0 +1,11 @@
+{
+  "_readme": "Fee-account registry. A 'trader' = unique wallet whose tx paid one of these accounts in the window. Addresses must be verified against Dune community mappings (adam_tehc 'Trading Bots on Solana', spellbook dex_solana.bot_trades) before being added. Adding/rotating an account is a one-line change to feeAccounts.",
+  "terminals": [
+    { "name": "Axiom",   "color": "#9945FF", "feeAccounts": [] },
+    { "name": "Photon",  "color": "#14F195", "feeAccounts": [] },
+    { "name": "GMGN",    "color": "#FFB454", "feeAccounts": [] },
+    { "name": "BullX",   "color": "#3D7BFF", "feeAccounts": [] },
+    { "name": "Trojan",  "color": "#FF5470", "feeAccounts": [] },
+    { "name": "Phantom", "color": "#B39DFF", "feeAccounts": [] }
+  ]
+}

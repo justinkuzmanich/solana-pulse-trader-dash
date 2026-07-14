@@ -1,0 +1,15 @@
+# Solana Trade Pulse — Netlify config
+# Static frontend at repo root + serverless functions that hide all API keys.
+
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  # Bundle the fee-account registry with every function so it reads one
+  # source of truth (config/terminals.json) at runtime.
+  included_files = ["config/terminals.json"]
+
+# dune-refresh runs on a schedule (declared here so it never runs per page load).
+# Added in Phase 1; see CLAUDE.md "Data pipeline".

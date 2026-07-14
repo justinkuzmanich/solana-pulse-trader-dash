@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solana Trade Pulse — Is it worth trading right now?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0D14; --panel:#101521; --panel-2:#0D1119; --line:#1C2333;
+    --text:#E9EDF6; --muted:#66708A;
+    --purple:#9945FF; --green:#14F195; --amber:#FFB454; --red:#FF5470; --blue:#3D7BFF;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+  .wrap{max-width:1180px;margin:0 auto;padding:20px 20px 48px}
+  .k{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .caption{font-size:12px;color:var(--muted);line-height:1.5}
+  .up{color:var(--green)}.down{color:var(--red)}
+  .tag{font-size:9px;letter-spacing:.1em;padding:2px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);text-transform:uppercase}
+  .tag.demo{color:var(--amber);border-color:rgba(255,180,84,.35)}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:6px 2px 18px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:12px}
+  .live-dot{width:10px;height:10px;border-radius:50%;background:var(--amber);box-shadow:0 0 12px var(--amber);animation:blink 2.2s ease-in-out infinite;flex:none}
+  @keyframes blink{50%{opacity:.35}}
+  h1{font-size:17px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+  h1 span{color:var(--muted);font-weight:400}
+  .head-right{display:flex;align-items:center;gap:20px}
+  .topstats{display:flex;gap:22px;font-size:13px}
+  .topstats .v{font-weight:600}
+  .topstats .k{display:block;margin-bottom:2px}
+
+  /* ---------- global timeframe control ---------- */
+  .segs{display:flex;border:1px solid var(--line);border-radius:99px;padding:3px;gap:2px;background:var(--panel)}
+  .segs button{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;padding:7px 16px;border:none;border-radius:99px;background:transparent;color:var(--muted);cursor:pointer;font-weight:600;transition:color .2s}
+  .segs button:hover{color:var(--text)}
+  .segs button.on{background:linear-gradient(92deg,rgba(153,69,255,.35),rgba(20,241,149,.28));color:var(--text);box-shadow:inset 0 0 0 1px rgba(20,241,149,.35)}
+  .segs button:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+
+  /* ---------- HERO: market heat ---------- */
+  .hero{display:grid;grid-template-columns:290px 1fr 300px;gap:0;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:
+    radial-gradient(900px 400px at 10% 130%, rgba(153,69,255,.12), transparent 60%),
+    radial-gradient(700px 300px at 95% -30%, rgba(20,241,149,.08), transparent 60%),
+    var(--panel-2)}
+  .hero > div{padding:24px 26px}
+  .hero .divider{border-left:1px solid var(--line)}
+  #gauge{display:block;width:240px;height:150px;margin:6px auto 0}
+  .gauge-wrap{text-align:center}
+  .gauge-score{font-family:'IBM Plex Mono',monospace;font-size:40px;font-weight:600;margin-top:-58px;position:relative}
+  .gauge-label{font-size:13px;letter-spacing:.22em;text-transform:uppercase;font-weight:700;margin-top:2px}
+  .hero .k{color:#98A1BA;font-weight:600}
+  .verdict-title{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#98A1BA;font-weight:600;margin-bottom:12px}
+  .verdict-title b{color:var(--green);font-weight:600}
+  .verdict{font-size:clamp(19px,2.4vw,25px);font-weight:500;line-height:1.35}
+  .verdict b{font-weight:700}
+  .verdict-sub{margin-top:12px;font-size:13px;color:var(--muted);line-height:1.6}
+  .drivers .k{margin-bottom:14px}
+  .driver{margin-bottom:16px}
+  .driver .row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px}
+  .driver .row .val{font-family:'IBM Plex Mono',monospace;font-weight:600}
+  .driver .bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;position:relative}
+  .driver .bar i{display:block;height:100%;border-radius:99px;transition:width .6s ease}
+  .driver .bar .mid{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:rgba(233,237,246,.35)}
+  .driver .hint{font-size:10px;color:var(--muted);margin-top:4px}
+
+  /* ---------- twin metric cards ---------- */
+  .grid{display:grid;gap:14px;margin-top:14px}
+  .twins{grid-template-columns:repeat(3,1fr)}
+  .launch{grid-template-columns:1fr 1fr}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+  .card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:8px}
+  .card-head .k, .history .head .k{font-size:12px;color:var(--text);font-weight:700;letter-spacing:.12em}
+  .hero-num{font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:600;margin:10px 0 4px;white-space:nowrap}
+  .hero-num small{font-size:13px;color:var(--muted);font-weight:400}
+  .vs{font-size:12px;margin-bottom:4px}
+  .cdot{width:8px;height:8px;border-radius:3px;display:inline-block;margin-right:8px;vertical-align:0}
+  .windows{display:grid;grid-template-columns:repeat(4,1fr);margin-top:14px;border-top:1px solid var(--line)}
+  .win{position:relative;padding:12px 6px 4px 12px;border-left:1px solid var(--line);cursor:pointer;transition:background .2s}
+  .win:first-child{border-left:none;padding-left:2px}
+  .win:hover{background:rgba(233,237,246,.03)}
+  .win.on::before{content:"";position:absolute;top:-1px;left:0;right:10px;height:2px;border-radius:2px;background:var(--green)}
+  .win:first-child.on::before{left:0}
+  .win.on .wk{color:var(--green)}
+  .win .wk{font-size:10px;letter-spacing:.1em;color:#98A1BA;font-weight:600;text-transform:uppercase;transition:color .2s}
+  .win .wv{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600;margin-top:5px}
+  .win .wd{font-family:'IBM Plex Mono',monospace;font-size:11px;margin-top:3px}
+
+  /* ---------- terminal breakdown ---------- */
+  .terminals{margin-top:14px}
+  .term-row{display:grid;grid-template-columns:130px 1fr 110px 110px 70px;align-items:center;gap:14px;padding:11px 6px;border-bottom:1px solid var(--line);font-size:13px}
+  .term-row:last-child{border-bottom:none}
+  .term-row.header{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:8px}
+  .term-name{display:flex;align-items:center;gap:9px;font-weight:500}
+  .term-dot{width:8px;height:8px;border-radius:3px;flex:none}
+  .term-bar{height:8px;border-radius:99px;background:var(--panel-2);overflow:hidden}
+  .term-bar i{display:block;height:100%;border-radius:99px;transition:width .6s ease}
+  .num{font-family:'IBM Plex Mono',monospace;text-align:right}
+  @media(max-width:900px){
+    .hero{grid-template-columns:1fr}
+    .hero .divider{border-left:none;border-top:1px solid var(--line)}
+    .twins{grid-template-columns:1fr}
+    .launch{grid-template-columns:1fr}
+    .term-row{grid-template-columns:110px 1fr 80px;font-size:12px}
+    .term-row .hide-m{display:none}
+    .topstats{display:none}
+  }
+
+  /* ---------- pulse + history ---------- */
+  .pulse-card{margin-top:14px;position:relative;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--panel-2)}
+  #pulse{display:block;width:100%;height:215px}
+  .pulse-meta{position:absolute;top:12px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:center;pointer-events:none}
+  .pulse-meta .k{color:var(--text);font-weight:700;font-size:12px;letter-spacing:.14em;display:flex;align-items:center;gap:9px}
+  .pulse-meta .k::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);animation:blink 2.2s ease-in-out infinite}
+  .pulse-meta .mono{color:var(--text);font-weight:600}
+  .history{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 10px}
+  .history .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+  #histChart{display:block;width:100%;height:180px}
+
+  /* ---------- how to read ---------- */
+  .legend{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+  .legend h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .legend .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px 28px}
+  .legend p{font-size:12px;color:var(--muted);line-height:1.65}
+  .legend b{color:var(--text);font-weight:500}
+  @media(max-width:700px){.legend .cols{grid-template-columns:1fr}}
+  footer{margin-top:18px;font-size:11px;color:var(--muted);line-height:1.7}
+
+  @media (prefers-reduced-motion: reduce){ .live-dot{animation:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="live-dot"></div>
+      <h1>Solana <span>/ Trade Pulse</span></h1>
+      <span class="tag demo">demo data</span>
+    </div>
+    <div class="head-right">
+      <!-- global timeframe: drives every panel below -->
+      <div class="segs" role="tablist" aria-label="Timeframe">
+        <button data-w="5m" role="tab">5M</button>
+        <button data-w="1h" role="tab" class="on">1H</button>
+        <button data-w="6h" role="tab">6H</button>
+        <button data-w="24h" role="tab">1D</button>
+      </div>
+      <div class="topstats mono">
+        <div><span class="k">SOL Price</span><span class="v" id="solPrice">$212.40</span></div>
+        <div><span class="k">Updated</span><span class="v" id="updated">—</span></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ 1. THE ANSWER ============ -->
+  <section class="hero">
+    <div class="gauge-wrap">
+      <div class="k">Market Heat · <span id="gaugeWin">last hour</span></div>
+      <canvas id="gauge"></canvas>
+      <div class="gauge-score mono" id="heatScore">—</div>
+      <div class="gauge-label" id="heatLabel">—</div>
+    </div>
+    <div class="divider">
+      <div class="verdict-title">Right now · <b id="verdictWin">last hour</b></div>
+      <div class="verdict" id="verdict">Loading market read…</div>
+      <div class="verdict-sub" id="verdictSub"></div>
+    </div>
+    <div class="divider drivers">
+      <div class="k">What's driving it</div>
+      <div class="driver">
+        <div class="row"><span>Traders vs typical</span><span class="val" id="d1v">—</span></div>
+        <div class="bar"><i id="d1b"></i><span class="mid"></span></div>
+        <div class="hint">Active wallets vs the 7-day average for this window</div>
+      </div>
+      <div class="driver">
+        <div class="row"><span>Volume vs typical</span><span class="val" id="d2v">—</span></div>
+        <div class="bar"><i id="d2b"></i><span class="mid"></span></div>
+        <div class="hint">Terminal trading volume vs its 7-day average</div>
+      </div>
+      <div class="driver">
+        <div class="row"><span>New token activity</span><span class="val" id="d3v">—</span></div>
+        <div class="bar"><i id="d3b"></i><span class="mid"></span></div>
+        <div class="hint">Fresh launches & graduations vs typical pace</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. LIVE HEARTBEAT ============ -->
+  <section class="pulse-card">
+    <canvas id="pulse"></canvas>
+    <div class="pulse-meta">
+      <span class="k">Live network heartbeat · always real-time</span>
+      <span class="mono" style="font-size:12px" id="pulseRate">— tx/s</span>
+    </div>
+  </section>
+
+  <!-- ============ 3. THE NUMBERS THAT MATTER ============ -->
+  <section class="grid twins">
+    <div class="card">
+      <div class="card-head"><span class="k"><span class="cdot" style="background:var(--green)"></span>Traders on chain</span><span class="tag">fee wallets</span></div>
+      <div class="hero-num" id="tradersNow">—</div>
+      <div class="vs" id="tradersVs">—</div>
+      <div class="windows" id="tWins"></div>
+      <p class="caption" style="margin-top:12px">Unique wallets trading through the terminals — the hardest signal to fake.</p>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="k"><span class="cdot" style="background:var(--purple)"></span>Transactions</span><span class="tag">terminal trades</span></div>
+      <div class="hero-num" id="txNow">—</div>
+      <div class="vs" id="txVs">—</div>
+      <div class="windows" id="xWins"></div>
+      <p class="caption" style="margin-top:12px">All buys + sells. Spiking without new traders = the same wallets and bots churning.</p>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="k"><span class="cdot" style="background:var(--blue)"></span>Terminal volume</span><span class="tag">SOL & memecoins</span></div>
+      <div class="hero-num" id="volNow">—</div>
+      <div class="vs" id="volVs">—</div>
+      <div class="windows" id="vWins"></div>
+      <p class="caption" style="margin-top:12px">Flow routed through the terminals — the money that actually moves memecoin prices.</p>
+    </div>
+  </section>
+
+  <!-- ============ 2b. LAUNCHPAD ACTIVITY ============ -->
+  <section class="grid launch">
+    <div class="card">
+      <div class="card-head"><span class="k"><span class="cdot" style="background:var(--amber)"></span>Tokens created</span><span class="tag">launchpads</span></div>
+      <div class="hero-num" id="createdNow">—</div>
+      <div class="vs" id="createdVs">—</div>
+      <div class="windows" id="lWins"></div>
+      <p class="caption" style="margin-top:12px">New launches across pump.fun and the other launchpads — attention flowing in.</p>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="k"><span class="cdot" style="background:#B39DFF"></span>Tokens migrated</span><span class="tag">graduated to DEX</span></div>
+      <div class="hero-num" id="migratedNow">—</div>
+      <div class="vs" id="migratedVs">—</div>
+      <div class="windows" id="mWins"></div>
+      <p class="caption" style="margin-top:12px">Launches that graduated to a full DEX where every trader can see them — the quality filter.</p>
+    </div>
+  </section>
+
+  <!-- ============ 3. WHERE THE TRADERS ARE ============ -->
+  <section class="card terminals">
+    <div class="card-head"><span class="k">Where traders are · <span id="termWin">last hour</span></span><span class="tag">terminal share</span></div>
+    <div class="term-row header"><span>Terminal</span><span>Share of volume</span><span class="num hide-m">Traders</span><span class="num">Volume</span><span class="num hide-m">Share</span></div>
+    <div id="termRows"></div>
+    <p class="caption" style="margin-top:10px">Which apps trading is flowing through. A single terminal spiking often means one hot token is being sniped there.</p>
+  </section>
+
+  <!-- ============ 5. THE WEEK IN CONTEXT ============ -->
+  <section class="history">
+    <div class="head"><span class="k">Terminal volume — last 5 days</span><span class="k mono" id="histTotal"></span></div>
+    <canvas id="histChart"></canvas>
+    <p class="caption" style="padding:6px 2px 8px">Today vs the last few days. Rising bars = momentum building; a fading week means the crowd is leaving.</p>
+  </section>
+
+  <!-- ============ 6. HOW TO READ THIS ============ -->
+  <section class="legend">
+    <h2>How to read this dashboard</h2>
+    <div class="cols">
+      <p><b>The timeframe switch</b> (top right) changes everything on the page at once. 5M answers "what's happening this second," 1H is the working view, 6H shows the session, 1D shows the day. If 5M runs hot while 1D runs cold, the market is just waking up.</p>
+      <p><b>Market Heat</b> rolls everything into one 0–100 score. <b>Cold / Quiet</b>: few traders, thin volume — moves are slow and exits can be hard. <b>Active</b>: healthy participation, the everyday zone. <b>Hot</b>: well above normal — fast moves, good liquidity. <b>Frenzy</b>: extreme — biggest opportunities, biggest risk of chasing tops.</p>
+      <p><b>The center line</b> on each driver bar is "typical" (the 7-day average for this window and time of day). Right of it = busier than usual. Comparing to the same hour matters because weekends and US evenings always run hotter than a Tuesday 4 AM.</p>
+      <p><b>Traders on chain</b> is the most honest signal: volume can be inflated by a few whales, but thousands of distinct fee-paying wallets can't. <b>The heartbeat's</b> dashed lines mark slow, typical, busy and frenzy throughput so the animation reads at a glance.</p>
+      <p><b>Tokens created vs migrated</b> is the launchpad funnel. Creations show attention pouring in; migrations show which launches attracted real buyers and graduated to a full DEX where everyone can trade them. Lots of creations with a falling migration rate = a spray of low-quality launches. Migrations rising = money is actually sticking.</p>
+    </div>
+  </section>
+
+  <footer>
+    Demo data for layout review. When wired: traders & terminal volume via Dune (fee-wallet mappings) + Helius webhooks for the live 5-minute window · heartbeat via Solana RPC · history via cached Dune query.
+  </footer>
+</div>
+
+<script>
+/* ================= HELPERS ================= */
+const $ = id => document.getElementById(id);
+const fmtUSD = n => n>=1e9 ? "$"+(n/1e9).toFixed(2)+"B" : n>=1e6 ? "$"+(n/1e6).toFixed(1)+"M" : "$"+(n/1e3).toFixed(0)+"K";
+const fmtN = n => Intl.NumberFormat("en-US",{notation:n>=1e6?"compact":"standard",maximumFractionDigits:1}).format(Math.round(n));
+const pct = x => (x>=0?"+":"")+Math.round(x)+"%";
+
+/* ================= DATA (demo, per window) ================= */
+const HEAT_ZONES = [
+  {max:25, label:"COLD",   color:"#3D7BFF", verdict:"<b>Cold.</b> Very few traders on chain — moves are slow and exits are thin.", sub:"New traders: a good time to watch and learn, not to enter. Experienced: only high-conviction setups."},
+  {max:45, label:"QUIET",  color:"#5BA8C4", verdict:"<b>Quiet.</b> Below-average participation — the market is coasting.", sub:"Liquidity is okay on majors, thin on new launches. Size down and be patient."},
+  {max:70, label:"ACTIVE", color:"#14F195", verdict:"<b>Active.</b> Healthy trader flow — normal, tradable conditions.", sub:"Enough participants for clean entries and exits. The everyday trading zone."},
+  {max:88, label:"HOT",    color:"#FFB454", verdict:"<b>Hot.</b> Well above typical activity — money is moving fast.", sub:"Good liquidity and fast moves. Momentum trades work, but so do sudden reversals."},
+  {max:101,label:"FRENZY", color:"#FF5470", verdict:"<b>Frenzy.</b> Extreme activity — the whole market is chasing.", sub:"Biggest opportunities and the highest risk of buying tops. Take profits fast, expect violent swings."}
+];
+
+const WINDOWS = {
+  "5m":  {label:"last 5 min",   short:"5 min",  heat:74, traders:3900,   tradersTyp:3050,   tx:152000,  txTyp:114000,  vol:15.2e6,  volTyp:11.9e6, launches:1.42, created:126,   createdTyp:89,    migrated:3,   migratedTyp:2},
+  "1h":  {label:"last hour",    short:"1 hr",   heat:63, traders:41200,  tradersTyp:36500,  tx:1.46e6,  txTyp:1.28e6,  vol:168e6,   volTyp:151e6,  launches:1.31, created:1290,  createdTyp:1080,  migrated:21,  migratedTyp:15},
+  "6h":  {label:"last 6 hours", short:"6 hr",   heat:54, traders:168400, tradersTyp:159000, tx:7.7e6,   txTyp:7.4e6,   vol:8.9e8,   volTyp:8.6e8,  launches:1.12, created:6840,  createdTyp:6400,  migrated:94,  migratedTyp:86},
+  "24h": {label:"last 24 hours",short:"24 hr",  heat:46, traders:512000, tradersTyp:527000, tx:26.1e6,  txTyp:27.2e6,  vol:3.42e9,  volTyp:3.5e9,  launches:0.96, created:24600, createdTyp:25900, migrated:308, migratedTyp:334}
+};
+let curWin = "1h";
+
+const TERMINALS = [
+  {name:"Axiom",   color:"#9945FF", share:{ "5m":0.42,"1h":0.38,"6h":0.36,"24h":0.35 }},
+  {name:"Photon",  color:"#14F195", share:{ "5m":0.17,"1h":0.19,"6h":0.20,"24h":0.20 }},
+  {name:"GMGN",    color:"#FFB454", share:{ "5m":0.15,"1h":0.14,"6h":0.14,"24h":0.14 }},
+  {name:"BullX",   color:"#3D7BFF", share:{ "5m":0.10,"1h":0.12,"6h":0.12,"24h":0.13 }},
+  {name:"Trojan",  color:"#FF5470", share:{ "5m":0.09,"1h":0.10,"6h":0.11,"24h":0.11 }},
+  {name:"Phantom", color:"#B39DFF", share:{ "5m":0.07,"1h":0.07,"6h":0.07,"24h":0.07 }}
+];
+
+const history = [2.61e9, 2.88e9, 2.55e9, 3.19e9, 3.42e9];
+
+/* ================= GAUGE ================= */
+function zone(h){ return HEAT_ZONES.find(z=>h<z.max); }
+function sizeCanvas(c){
+  const dpr = devicePixelRatio||1, r = c.getBoundingClientRect();
+  c.width=r.width*dpr; c.height=r.height*dpr;
+  c.getContext("2d").setTransform(dpr,0,0,dpr,0,0);
+  return r;
+}
+function drawGauge(h){
+  const c = $("gauge"), ctx = c.getContext("2d");
+  const r = sizeCanvas(c), W=r.width, H=r.height;
+  const cx=W/2, cy=H-8, R=Math.min(W/2-10, H-18);
+  ctx.clearRect(0,0,W,H);
+  const segs=[[0,.25,"#3D7BFF"],[.25,.45,"#5BA8C4"],[.45,.70,"#14F195"],[.70,.88,"#FFB454"],[.88,1,"#FF5470"]];
+  segs.forEach(([a,b,col])=>{
+    ctx.beginPath();
+    ctx.arc(cx,cy,R, Math.PI*(1+a)+0.02, Math.PI*(1+b)-0.02);
+    ctx.strokeStyle=col; ctx.globalAlpha=.28; ctx.lineWidth=13; ctx.lineCap="round"; ctx.stroke();
+  });
+  ctx.globalAlpha=1;
+  const z = zone(h);
+  ctx.beginPath();
+  ctx.arc(cx,cy,R, Math.PI, Math.PI*(1+h/100));
+  ctx.strokeStyle=z.color; ctx.lineWidth=13; ctx.lineCap="round";
+  ctx.shadowColor=z.color; ctx.shadowBlur=14; ctx.stroke(); ctx.shadowBlur=0;
+  const ang=Math.PI*(1+h/100);
+  ctx.beginPath();
+  ctx.arc(cx+Math.cos(ang)*R, cy+Math.sin(ang)*R, 5.5, 0, 7);
+  ctx.fillStyle="#E9EDF6"; ctx.fill();
+}
+
+/* ================= APPLY WINDOW (the global control) ================= */
+function driverBar(barId, valId, ratio){
+  const p = Math.max(4, Math.min(100, 50 + (ratio-1)*62));
+  const el = $(barId);
+  el.style.width = p+"%";
+  el.style.background = ratio>=1 ? "linear-gradient(90deg,var(--purple),var(--green))" : "linear-gradient(90deg,#2A3550,var(--blue))";
+  const v = $(valId);
+  v.textContent = pct((ratio-1)*100);
+  v.className = "val "+(ratio>=1?"up":"down");
+}
+
+function buildWindowGrids(){
+  const t=[], x=[], v=[], l=[], m=[];
+  for(const [key,w] of Object.entries(WINDOWS)){
+    const td=(w.traders/w.tradersTyp-1)*100, xd=(w.tx/w.txTyp-1)*100, vd=(w.vol/w.volTyp-1)*100,
+          ld=(w.created/w.createdTyp-1)*100, md=(w.migrated/w.migratedTyp-1)*100;
+    t.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtN(w.traders)}</div><div class="wd ${td>=0?"up":"down"}">${pct(td)}</div></div>`);
+    x.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtN(w.tx)}</div><div class="wd ${xd>=0?"up":"down"}">${pct(xd)}</div></div>`);
+    v.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtUSD(w.vol)}</div><div class="wd ${vd>=0?"up":"down"}">${pct(vd)}</div></div>`);
+    l.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtN(w.created)}</div><div class="wd ${ld>=0?"up":"down"}">${pct(ld)}</div></div>`);
+    m.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtN(w.migrated)}</div><div class="wd ${md>=0?"up":"down"}">${pct(md)}</div></div>`);
+  }
+  $("tWins").innerHTML=t.join("");
+  $("xWins").innerHTML=x.join("");
+  $("vWins").innerHTML=v.join("");
+  $("lWins").innerHTML=l.join("");
+  $("mWins").innerHTML=m.join("");
+}
+
+function applyWindow(key){
+  curWin = key;
+  const w = WINDOWS[key];
+  const z = zone(w.heat);
+
+  // header segs + mini-grid highlights
+  document.querySelectorAll(".segs button").forEach(b=>b.classList.toggle("on", b.dataset.w===key));
+  document.querySelectorAll(".win").forEach(el=>el.classList.toggle("on", el.dataset.w===key));
+
+  // hero
+  drawGauge(w.heat);
+  $("heatScore").textContent = Math.round(w.heat);
+  const lbl=$("heatLabel"); lbl.textContent=z.label; lbl.style.color=z.color;
+  $("gaugeWin").textContent = w.label;
+  $("verdictWin").textContent = w.label;
+  $("verdict").innerHTML = z.verdict;
+  $("verdictSub").textContent = z.sub;
+  driverBar("d1b","d1v", w.traders/w.tradersTyp);
+  driverBar("d2b","d2v", w.vol/w.volTyp);
+  driverBar("d3b","d3v", w.created/w.createdTyp);
+
+  // launchpad cards
+  const lr=w.created/w.createdTyp, mr=w.migrated/w.migratedTyp;
+  const migRate=(w.migrated/w.created*100);
+  $("createdNow").innerHTML = fmtN(w.created)+" <small>tokens · "+w.label+"</small>";
+  $("createdVs").innerHTML = "<span class='"+(lr>=1?"up":"down")+" mono'>"+pct((lr-1)*100)+"</span> <span class='caption'>vs typical for this window</span>";
+  $("migratedNow").innerHTML = fmtN(w.migrated)+" <small>tokens · "+w.label+"</small>";
+  $("migratedVs").innerHTML = "<span class='"+(mr>=1?"up":"down")+" mono'>"+pct((mr-1)*100)+"</span> <span class='caption'>vs typical · "+migRate.toFixed(1)+"% of launches graduate</span>";
+
+  // metric cards
+  const tr=w.traders/w.tradersTyp, xr=w.tx/w.txTyp, vr=w.vol/w.volTyp;
+  $("tradersNow").innerHTML = fmtN(w.traders)+" <small>wallets · "+w.label+"</small>";
+  $("tradersVs").innerHTML = "<span class='"+(tr>=1?"up":"down")+" mono'>"+pct((tr-1)*100)+"</span> <span class='caption'>vs typical for this window</span>";
+  $("txNow").innerHTML = fmtN(w.tx)+" <small>trades · "+w.label+"</small>";
+  $("txVs").innerHTML = "<span class='"+(xr>=1?"up":"down")+" mono'>"+pct((xr-1)*100)+"</span> <span class='caption'>vs typical · "+fmtN(w.tx/w.traders)+" per trader</span>";
+  $("volNow").innerHTML = fmtUSD(w.vol)+" <small>"+w.label+"</small>";
+  $("volVs").innerHTML = "<span class='"+(vr>=1?"up":"down")+" mono'>"+pct((vr-1)*100)+"</span> <span class='caption'>vs typical for this window</span>";
+
+  // terminals
+  $("termWin").textContent = w.label;
+  const topShare = Math.max(...TERMINALS.map(t=>t.share[key]));
+  $("termRows").innerHTML = TERMINALS.map(t=>{
+    const s=t.share[key], vol=w.vol*s, trd=w.traders*s;
+    return `<div class="term-row">
+      <span class="term-name"><span class="term-dot" style="background:${t.color}"></span>${t.name}</span>
+      <span class="term-bar"><i style="width:${(s/topShare*95).toFixed(1)}%;background:${t.color}"></i></span>
+      <span class="num hide-m">${fmtN(trd)}</span>
+      <span class="num">${fmtUSD(vol)}</span>
+      <span class="num hide-m" style="color:var(--muted)">${Math.round(s*100)}%</span>
+    </div>`;
+  }).join("");
+}
+
+// wire the controls (header segs + tappable mini-windows)
+document.addEventListener("click", e=>{
+  const el = e.target.closest("[data-w]");
+  if(el) applyWindow(el.dataset.w);
+});
+
+/* ================= PULSE with reference scale ================= */
+// Scale anchors (tx/s). In production, TYPICAL comes from the rolling
+// 24h average and the others scale from it — so the lines self-calibrate.
+const SCALE = { SLOW:1500, TYPICAL:3000, BUSY:4600, FRENZY:5800, CEIL:6600 };
+const pulse=$("pulse"), pctx=pulse.getContext("2d");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const SLOT=13, BARW=9, SPEED=0.55;   // px per bar step / bar width / px per frame
+let samples=[], offset=0, level=2800;
+
+function nextSample(){
+  // Smooth demo signal: layered slow waves + a gentle random walk.
+  // Live mode: this eases toward the latest RPC tps reading instead.
+  const t=Date.now()/1000;
+  const target=3100+Math.sin(t/18)*1150+Math.sin(t/5.3)*420+Math.sin(t/47)*650;
+  level += (target-level)*0.25 + (Math.random()-0.5)*130;
+  level = Math.max(650, Math.min(SCALE.CEIL*0.98, level));
+  return level;
+}
+
+function drawPulse(){
+  const r=sizeCanvas(pulse), W=r.width, H=r.height;
+  const padTop=48, padBot=18, plotH=H-padTop-padBot;
+
+  // keep exactly enough samples to fill the width, plus a spare offscreen
+  const need=Math.ceil(W/SLOT)+2;
+  while(samples.length<need) samples.unshift(nextSample());
+  if(samples.length>need+6) samples.splice(0, samples.length-(need+6));
+
+  pctx.clearRect(0,0,W,H);
+
+  // reference lines with pill labels
+  const lines=[
+    {v:SCALE.FRENZY, txt:"FRENZY", col:"#FF5470"},
+    {v:SCALE.BUSY,   txt:"BUSY",   col:"#FFB454"},
+    {v:SCALE.TYPICAL,txt:"TYPICAL",col:"#C7CEE0"},
+    {v:SCALE.SLOW,   txt:"SLOW",   col:"#5B8CFF"}
+  ];
+  pctx.textAlign="left";
+  lines.forEach(l=>{
+    const y = H-padBot - (l.v/SCALE.CEIL)*plotH;
+    pctx.strokeStyle=l.col; pctx.globalAlpha=.5;
+    pctx.setLineDash([5,7]); pctx.lineWidth=1;
+    pctx.beginPath(); pctx.moveTo(0,y); pctx.lineTo(W,y); pctx.stroke();
+    pctx.setLineDash([]); pctx.globalAlpha=1;
+    const label=l.txt+" · "+fmtN(l.v)+" tx/s";
+    pctx.font="700 11px 'IBM Plex Mono',monospace";
+    const tw=pctx.measureText(label).width;
+    pctx.fillStyle="rgba(10,13,20,.9)";
+    pctx.beginPath(); pctx.roundRect(6, y-19, tw+18, 20, 10); pctx.fill();
+    pctx.strokeStyle=l.col; pctx.globalAlpha=.35; pctx.lineWidth=1;
+    pctx.beginPath(); pctx.roundRect(6, y-19, tw+18, 20, 10); pctx.stroke();
+    pctx.globalAlpha=1;
+    pctx.fillStyle=l.col;
+    pctx.fillText(label, 15, y-5);
+  });
+
+  // scrolling conveyor: bars slide left, new bar enters seamlessly at right
+  if(!reduced){
+    offset+=SPEED;
+    while(offset>=SLOT){
+      offset-=SLOT;
+      samples.push(nextSample());
+      if(samples.length>need+6) samples.shift();
+      $("pulseRate").textContent=Math.round(samples[samples.length-1]).toLocaleString()+" tx/s";
+    }
+  }
+
+  const grad=pctx.createLinearGradient(0,H-padBot,0,padTop);
+  grad.addColorStop(0,"rgba(153,69,255,.9)"); grad.addColorStop(1,"rgba(20,241,149,.9)");
+  pctx.fillStyle=grad;
+  const len=samples.length;
+  for(let i=0;i<len;i++){
+    const x = W - (len-1-i)*SLOT - offset;   // newest bar starts at x=W and scrolls on
+    if(x+BARW<0 || x>W) continue;
+    // interpolate with the next sample for a smoother silhouette
+    const a=samples[i], b=samples[Math.min(len-1,i+1)];
+    const v=a*0.7+b*0.3;
+    const h=Math.max(3, (v/SCALE.CEIL)*plotH);
+    pctx.globalAlpha=0.3+0.7*(x/W);
+    pctx.beginPath(); pctx.roundRect(x, H-padBot-h, BARW, h, 3); pctx.fill();
+  }
+  pctx.globalAlpha=1;
+  requestAnimationFrame(drawPulse);
+}
+function tickPulse(){
+  $("updated").textContent=new Date().toLocaleTimeString();
+  if(reduced) $("pulseRate").textContent=Math.round(samples[samples.length-1]||0).toLocaleString()+" tx/s";
+}
+
+/* ================= HISTORY ================= */
+function renderHistory(){
+  const c=$("histChart"), ctx=c.getContext("2d");
+  const r=sizeCanvas(c), W=r.width, H=r.height, pad={l:8,r:8,t:16,b:26};
+  ctx.clearRect(0,0,W,H);
+  const data=history, max=Math.max(...data), n=data.length, gap=26;
+  const bw=(W-pad.l-pad.r-gap*(n-1))/n;
+  const now=Date.now();
+  data.forEach((v,i)=>{
+    const h=(v/max)*(H-pad.t-pad.b), x=pad.l+i*(bw+gap), y=H-pad.b-h;
+    const g=ctx.createLinearGradient(0,y,0,H-pad.b);
+    g.addColorStop(0, i===n-1?"rgba(20,241,149,.95)":"rgba(20,241,149,.55)");
+    g.addColorStop(1,"rgba(153,69,255,.5)");
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.roundRect(x,y,bw,h,6); ctx.fill();
+    ctx.fillStyle="#E9EDF6"; ctx.font="600 12px 'IBM Plex Mono',monospace"; ctx.textAlign="center";
+    ctx.fillText(fmtUSD(v), x+bw/2, y-6);
+    ctx.fillStyle="#66708A"; ctx.font="10px 'IBM Plex Mono',monospace";
+    const d=new Date(now-(n-1-i)*864e5);
+    ctx.fillText(i===n-1?"Today":d.toLocaleDateString("en-US",{weekday:"short"}), x+bw/2, H-8);
+  });
+  $("histTotal").textContent="5d total "+fmtUSD(data.reduce((a,b)=>a+b,0));
+}
+
+/* ================= BOOT ================= */
+buildWindowGrids();
+applyWindow(curWin);
+renderHistory();
+drawPulse(); tickPulse(); setInterval(tickPulse, 1200);
+addEventListener("resize", ()=>{ applyWindow(curWin); renderHistory(); });
+</script>
+</body>
+</html>
