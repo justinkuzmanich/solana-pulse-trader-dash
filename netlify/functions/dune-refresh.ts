@@ -11,8 +11,10 @@ import { TERMINAL_NAMES } from "../lib/registry";
 
 type Job = "main" | "history" | "baseline";
 const JOBS: Job[] = ["main", "history", "baseline"];
-// conservative per-run credit estimates, used when the API doesn't report actuals
-const EST_CREDITS: Record<Job, number> = { main: 6, history: 8, baseline: 14 };
+// conservative per-run credit estimates, used only as a fallback until the API
+// reports an actual (main/baseline scan solana.account_activity on Medium
+// engine — real cost confirmed once the first live execution completes)
+const EST_CREDITS: Record<Job, number> = { main: 20, history: 15, baseline: 35 };
 
 const QUERY_ENV: Record<Job, string> = {
   main: "DUNE_QUERY_MAIN",
