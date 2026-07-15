@@ -126,64 +126,55 @@ GROUP BY date_trunc('day', block_time)
 ORDER BY t
 `;
 
-/* ---------------- 3. BASELINE query: 7 complete days, daily until local history accumulates ---------------- */
+/* ---------------- 3. BASELINE query: 7 complete days, daily until local history accumulates ----------------
+   Same single-reference-per-CTE principle as the main query. GROUPING SETS
+   computes the 1h/6h/24h bucket granularities in one pass over term_trades
+   (and one pass over launch_ix) instead of three separate re-derivations —
+   exactly one column of (h1, h6) is non-NULL per output row (h1 always
+   0..23, never NULL, so a NULL there unambiguously means "not this
+   grouping"), which is what identifies which bucket size a row belongs to. */
 const baselineSql = `-- Solana Trade Pulse — BASELINE ("typical") query (generated; do not edit by hand)
 -- 7-day averages per time-of-day bucket, matching each dashboard window.
 -- base_1h: bucket = hour-of-day 0..23 · base_6h: bucket = 6h block 0..3 · base_24h: bucket = 0
 -- Trades metrics use per-bucket DISTINCT counts averaged across the 7 days.
 -- Columns: section, bucket, terminal, traders, tx, vol, created, migrated
 ${baseCtes(7, true)}
-, per_1h AS (
-  SELECT date_trunc('day', block_time) AS d, hour(block_time) AS b,
-         COUNT(DISTINCT trader_id) AS traders, COUNT(DISTINCT tx_id) AS tx, SUM(amount_usd) AS vol
-  FROM term_trades GROUP BY 1, 2
+, keyed AS (
+  SELECT trader_id, tx_id, amount_usd,
+         date_trunc('day', block_time) AS d, hour(block_time) AS h1, hour(block_time) / 6 AS h6
+  FROM term_trades
 ),
-per_6h AS (
-  SELECT date_trunc('day', block_time) AS d, hour(block_time) / 6 AS b,
+per_bucket AS (
+  SELECT d, h1, h6,
          COUNT(DISTINCT trader_id) AS traders, COUNT(DISTINCT tx_id) AS tx, SUM(amount_usd) AS vol
-  FROM term_trades GROUP BY 1, 2
+  FROM keyed
+  GROUP BY GROUPING SETS ((d, h1), (d, h6), (d))
 ),
-per_24h AS (
-  SELECT date_trunc('day', block_time) AS d, 0 AS b,
-         COUNT(DISTINCT trader_id) AS traders, COUNT(DISTINCT tx_id) AS tx, SUM(amount_usd) AS vol
-  FROM term_trades GROUP BY 1, 2
+lkeyed AS (
+  SELECT kind, date_trunc('day', block_time) AS d, hour(block_time) AS h1, hour(block_time) / 6 AS h6
+  FROM launch_ix
 ),
-l_per_1h AS (
-  SELECT date_trunc('day', block_time) AS d, hour(block_time) AS b,
+l_per_bucket AS (
+  SELECT d, h1, h6,
          COUNT(CASE WHEN kind = 'created' THEN 1 END) AS created,
          COUNT(CASE WHEN kind = 'migrated' THEN 1 END) AS migrated
-  FROM launch_ix GROUP BY 1, 2
-),
-l_per_6h AS (
-  SELECT date_trunc('day', block_time) AS d, hour(block_time) / 6 AS b,
-         COUNT(CASE WHEN kind = 'created' THEN 1 END) AS created,
-         COUNT(CASE WHEN kind = 'migrated' THEN 1 END) AS migrated
-  FROM launch_ix GROUP BY 1, 2
-),
-l_per_24h AS (
-  SELECT date_trunc('day', block_time) AS d, 0 AS b,
-         COUNT(CASE WHEN kind = 'created' THEN 1 END) AS created,
-         COUNT(CASE WHEN kind = 'migrated' THEN 1 END) AS migrated
-  FROM launch_ix GROUP BY 1, 2
+  FROM lkeyed
+  GROUP BY GROUPING SETS ((d, h1), (d, h6), (d))
 )
-SELECT 'base_1h' AS section, CAST(b AS varchar) AS bucket, '__total__' AS terminal,
-       AVG(traders) AS traders, AVG(tx) AS tx, AVG(vol) AS vol, NULL AS created, NULL AS migrated
-FROM per_1h GROUP BY b
+SELECT CASE WHEN h1 IS NOT NULL THEN 'base_1h' WHEN h6 IS NOT NULL THEN 'base_6h' ELSE 'base_24h' END AS section,
+       CAST(COALESCE(h1, h6, 0) AS varchar) AS bucket, '__total__' AS terminal,
+       AVG(traders) AS traders, AVG(tx) AS tx, AVG(vol) AS vol,
+       CAST(NULL AS double) AS created, CAST(NULL AS double) AS migrated
+FROM per_bucket
+GROUP BY h1, h6
+
 UNION ALL
-SELECT 'base_6h', CAST(b AS varchar), '__total__', AVG(traders), AVG(tx), AVG(vol), NULL, NULL
-FROM per_6h GROUP BY b
-UNION ALL
-SELECT 'base_24h', CAST(b AS varchar), '__total__', AVG(traders), AVG(tx), AVG(vol), NULL, NULL
-FROM per_24h GROUP BY b
-UNION ALL
-SELECT 'lbase_1h', CAST(b AS varchar), '__launch__', NULL, NULL, NULL, AVG(created), AVG(migrated)
-FROM l_per_1h GROUP BY b
-UNION ALL
-SELECT 'lbase_6h', CAST(b AS varchar), '__launch__', NULL, NULL, NULL, AVG(created), AVG(migrated)
-FROM l_per_6h GROUP BY b
-UNION ALL
-SELECT 'lbase_24h', CAST(b AS varchar), '__launch__', NULL, NULL, NULL, AVG(created), AVG(migrated)
-FROM l_per_24h GROUP BY b
+SELECT CASE WHEN h1 IS NOT NULL THEN 'lbase_1h' WHEN h6 IS NOT NULL THEN 'lbase_6h' ELSE 'lbase_24h' END,
+       CAST(COALESCE(h1, h6, 0) AS varchar), '__launch__',
+       CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),
+       AVG(created), AVG(migrated)
+FROM l_per_bucket
+GROUP BY h1, h6
 `;
 
 mkdirSync(join(root, "queries"), { recursive: true });
