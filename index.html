@@ -139,7 +139,7 @@
     <div class="brand">
       <div class="live-dot"></div>
       <h1>Solana <span>/ Trade Pulse</span></h1>
-      <span class="tag demo">demo data</span>
+      <span class="tag demo" id="dataBadge">demo data</span>
     </div>
     <div class="head-right">
       <!-- global timeframe: drives every panel below -->
@@ -269,7 +269,7 @@
   </section>
 
   <footer>
-    Demo data for layout review. When wired: traders & terminal volume via Dune (fee-wallet mappings) + Helius webhooks for the live 5-minute window · heartbeat via Solana RPC · history via cached Dune query.
+    Traders & terminal volume via Dune (fee-wallet registry, cached server-side — see the Updated time for data age) · live heartbeat via Solana RPC · history via cached daily Dune query · SOL price via CoinGecko. Amber badge means simulated demo data; the 5-minute window arrives with the live webhook pipeline (Phase 2).
   </footer>
 </div>
 
@@ -280,7 +280,84 @@ const fmtUSD = n => n>=1e9 ? "$"+(n/1e9).toFixed(2)+"B" : n>=1e6 ? "$"+(n/1e6).t
 const fmtN = n => Intl.NumberFormat("en-US",{notation:n>=1e6?"compact":"standard",maximumFractionDigits:1}).format(Math.round(n));
 const pct = x => (x>=0?"+":"")+Math.round(x)+"%";
 
-/* ================= DATA (demo, per window) ================= */
+/* ================= DATA LAYER (live endpoints, demo fallback) =================
+   Fetches the Netlify functions; if nothing live is available the page keeps
+   running on the demo data below with the amber "demo data" badge. Live values
+   are never mixed with demo values, and missing baselines render as "—". */
+const CONFIG = {
+  api: "/.netlify/functions",
+  refreshMs: 60_000,
+  windows: ["5m","1h","6h","24h"]
+};
+let MODE = "demo";                       // "demo" | "live"
+const LIVE = { windows:{}, history:null, historyT:null, asOf:null };
+
+const fetchJSON = async u => {
+  const r = await fetch(u);
+  if(!r.ok) throw new Error(String(r.status));
+  return r.json();
+};
+
+function normalizeWin(key, p){
+  return {
+    label: WINDOWS[key].label, short: WINDOWS[key].short,
+    heat: p.heat ?? null,
+    traders: p.traders, tradersTyp: p.tradersTyp,
+    tx: p.tx, txTyp: p.txTyp,
+    vol: p.vol, volTyp: p.volTyp,
+    created: p.created, createdTyp: p.createdTyp,
+    migrated: p.migrated, migratedTyp: p.migratedTyp,
+    terminals: p.terminals || [], asOf: p.asOf
+  };
+}
+
+function getWin(key){
+  if(MODE === "live"){
+    const w = LIVE.windows[key];
+    return w && !w.unavailable ? w : null;   // null → honest unavailable state
+  }
+  return WINDOWS[key];
+}
+
+function setBadge(){
+  const b = $("dataBadge");
+  if(MODE === "live"){ b.textContent = "live · dune"; b.classList.remove("demo"); }
+  else { b.textContent = "demo data"; b.classList.add("demo"); }
+}
+
+async function loadLive(){
+  try{
+    const res = await Promise.all(CONFIG.windows.map(k =>
+      fetchJSON(`${CONFIG.api}/market-stats?window=${k}`).catch(()=>null)));
+    const hist = await fetchJSON(`${CONFIG.api}/history`).catch(()=>null);
+    const got = {}; let any = false, asOf = null;
+    CONFIG.windows.forEach((k,i)=>{
+      const p = res[i];
+      if(p && !p.unavailable){ got[k] = normalizeWin(k,p); any = true; asOf = asOf || p.asOf; }
+      else got[k] = { unavailable:true };
+    });
+    if(!any) throw new Error("no live windows");
+    LIVE.windows = got;
+    LIVE.asOf = asOf;
+    if(hist && hist.days && hist.days.length){
+      LIVE.history  = hist.days.map(d=>d.v);
+      LIVE.historyT = hist.days.map(d=>d.t);
+    } else { LIVE.history = null; LIVE.historyT = null; }
+    MODE = "live";
+  }catch(e){ /* keep last good state; fresh page stays demo */ }
+  setBadge(); buildWindowGrids(); applyWindow(curWin); renderHistory();
+}
+
+async function pollSol(){
+  try{
+    const j = await fetchJSON("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
+    const p = j && j.solana && j.solana.usd;
+    if(p) $("solPrice").textContent = "$" + p.toLocaleString("en-US",{maximumFractionDigits:2});
+  }catch(e){ /* keep previous value */ }
+  setTimeout(pollSol, 300_000);           // free tier: 5-minute poll
+}
+
+/* ================= DATA (demo fallback, per window) ================= */
 const HEAT_ZONES = [
   {max:25, label:"COLD",   color:"#3D7BFF", verdict:"<b>Cold.</b> Very few traders on chain — moves are slow and exits are thin.", sub:"New traders: a good time to watch and learn, not to enter. Experienced: only high-conviction setups."},
   {max:45, label:"QUIET",  color:"#5BA8C4", verdict:"<b>Quiet.</b> Below-average participation — the market is coasting.", sub:"Liquidity is okay on majors, thin on new launches. Size down and be patient."},
@@ -290,10 +367,10 @@ const HEAT_ZONES = [
 ];
 
 const WINDOWS = {
-  "5m":  {label:"last 5 min",   short:"5 min",  heat:74, traders:3900,   tradersTyp:3050,   tx:152000,  txTyp:114000,  vol:15.2e6,  volTyp:11.9e6, launches:1.42, created:126,   createdTyp:89,    migrated:3,   migratedTyp:2},
-  "1h":  {label:"last hour",    short:"1 hr",   heat:63, traders:41200,  tradersTyp:36500,  tx:1.46e6,  txTyp:1.28e6,  vol:168e6,   volTyp:151e6,  launches:1.31, created:1290,  createdTyp:1080,  migrated:21,  migratedTyp:15},
-  "6h":  {label:"last 6 hours", short:"6 hr",   heat:54, traders:168400, tradersTyp:159000, tx:7.7e6,   txTyp:7.4e6,   vol:8.9e8,   volTyp:8.6e8,  launches:1.12, created:6840,  createdTyp:6400,  migrated:94,  migratedTyp:86},
-  "24h": {label:"last 24 hours",short:"24 hr",  heat:46, traders:512000, tradersTyp:527000, tx:26.1e6,  txTyp:27.2e6,  vol:3.42e9,  volTyp:3.5e9,  launches:0.96, created:24600, createdTyp:25900, migrated:308, migratedTyp:334}
+  "5m":  {label:"last 5 min",   short:"5 min",  heat:74, traders:3900,   tradersTyp:3050,   tx:152000,  txTyp:114000,  vol:15.2e6,  volTyp:11.9e6, created:126,   createdTyp:89,    migrated:3,   migratedTyp:2},
+  "1h":  {label:"last hour",    short:"1 hr",   heat:63, traders:41200,  tradersTyp:36500,  tx:1.46e6,  txTyp:1.28e6,  vol:168e6,   volTyp:151e6,  created:1290,  createdTyp:1080,  migrated:21,  migratedTyp:15},
+  "6h":  {label:"last 6 hours", short:"6 hr",   heat:54, traders:168400, tradersTyp:159000, tx:7.7e6,   txTyp:7.4e6,   vol:8.9e8,   volTyp:8.6e8,  created:6840,  createdTyp:6400,  migrated:94,  migratedTyp:86},
+  "24h": {label:"last 24 hours",short:"24 hr",  heat:46, traders:512000, tradersTyp:527000, tx:26.1e6,  txTyp:27.2e6,  vol:3.42e9,  volTyp:3.5e9,  created:24600, createdTyp:25900, migrated:308, migratedTyp:334}
 };
 let curWin = "1h";
 
@@ -328,6 +405,7 @@ function drawGauge(h){
     ctx.strokeStyle=col; ctx.globalAlpha=.28; ctx.lineWidth=13; ctx.lineCap="round"; ctx.stroke();
   });
   ctx.globalAlpha=1;
+  if(h==null) return;                      // no score → segments only
   const z = zone(h);
   ctx.beginPath();
   ctx.arc(cx,cy,R, Math.PI, Math.PI*(1+h/100));
@@ -341,82 +419,137 @@ function drawGauge(h){
 
 /* ================= APPLY WINDOW (the global control) ================= */
 function driverBar(barId, valId, ratio){
+  const el = $(barId), v = $(valId);
+  if(ratio == null || !isFinite(ratio)){   // baseline not established yet
+    el.style.width = "4%"; el.style.background = "var(--line)";
+    v.textContent = "—"; v.className = "val";
+    return;
+  }
   const p = Math.max(4, Math.min(100, 50 + (ratio-1)*62));
-  const el = $(barId);
   el.style.width = p+"%";
   el.style.background = ratio>=1 ? "linear-gradient(90deg,var(--purple),var(--green))" : "linear-gradient(90deg,#2A3550,var(--blue))";
-  const v = $(valId);
   v.textContent = pct((ratio-1)*100);
   v.className = "val "+(ratio>=1?"up":"down");
 }
 
 function buildWindowGrids(){
+  const cell = (w, val, typ, fmt) => {
+    if(!w) return `<div class="wv">—</div><div class="wd" style="color:var(--muted)">n/a</div>`;
+    const d = (typ!=null && typ>0) ? (val/typ-1)*100 : null;
+    return `<div class="wv">${fmt(val)}</div><div class="wd ${d==null?"":(d>=0?"up":"down")}">${d==null?"—":pct(d)}</div>`;
+  };
   const t=[], x=[], v=[], l=[], m=[];
-  for(const [key,w] of Object.entries(WINDOWS)){
-    const td=(w.traders/w.tradersTyp-1)*100, xd=(w.tx/w.txTyp-1)*100, vd=(w.vol/w.volTyp-1)*100,
-          ld=(w.created/w.createdTyp-1)*100, md=(w.migrated/w.migratedTyp-1)*100;
-    t.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtN(w.traders)}</div><div class="wd ${td>=0?"up":"down"}">${pct(td)}</div></div>`);
-    x.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtN(w.tx)}</div><div class="wd ${xd>=0?"up":"down"}">${pct(xd)}</div></div>`);
-    v.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtUSD(w.vol)}</div><div class="wd ${vd>=0?"up":"down"}">${pct(vd)}</div></div>`);
-    l.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtN(w.created)}</div><div class="wd ${ld>=0?"up":"down"}">${pct(ld)}</div></div>`);
-    m.push(`<div class="win" data-w="${key}"><div class="wk">${w.short}</div><div class="wv">${fmtN(w.migrated)}</div><div class="wd ${md>=0?"up":"down"}">${pct(md)}</div></div>`);
+  for(const key of CONFIG.windows){
+    const w = getWin(key), meta = WINDOWS[key];
+    const wk = `<div class="wk">${meta.short}</div>`;
+    t.push(`<div class="win" data-w="${key}">${wk}${cell(w, w&&w.traders,  w&&w.tradersTyp,  fmtN)}</div>`);
+    x.push(`<div class="win" data-w="${key}">${wk}${cell(w, w&&w.tx,       w&&w.txTyp,       fmtN)}</div>`);
+    v.push(`<div class="win" data-w="${key}">${wk}${cell(w, w&&w.vol,      w&&w.volTyp,      fmtUSD)}</div>`);
+    l.push(`<div class="win" data-w="${key}">${wk}${cell(w, w&&w.created,  w&&w.createdTyp,  fmtN)}</div>`);
+    m.push(`<div class="win" data-w="${key}">${wk}${cell(w, w&&w.migrated, w&&w.migratedTyp, fmtN)}</div>`);
   }
   $("tWins").innerHTML=t.join("");
   $("xWins").innerHTML=x.join("");
   $("vWins").innerHTML=v.join("");
   $("lWins").innerHTML=l.join("");
   $("mWins").innerHTML=m.join("");
+  document.querySelectorAll(".win").forEach(el=>el.classList.toggle("on", el.dataset.w===curWin));
+}
+
+const TERM_COLORS = Object.fromEntries(TERMINALS.map(t=>[t.name,t.color]));
+function termRowsFor(key, w){
+  if(MODE==="live" && w.terminals)
+    return w.terminals.map(t=>({name:t.name, color:TERM_COLORS[t.name]||"#66708A",
+                                traders:t.traders, vol:t.vol, share:t.share||0}));
+  return TERMINALS.map(t=>({name:t.name, color:t.color,
+                            traders:w.traders*t.share[key], vol:w.vol*t.share[key], share:t.share[key]}));
+}
+
+function renderUnavailable(key){
+  // live mode, window without a feed (5m until Phase 2) — no numbers are invented
+  drawGauge(null);
+  $("heatScore").textContent="—";
+  const lbl=$("heatLabel"); lbl.textContent="NO LIVE FEED"; lbl.style.color="var(--muted)";
+  $("verdict").innerHTML="<b>The live 5-minute feed isn't connected yet.</b> This window needs the real-time pipeline (Phase&nbsp;2).";
+  $("verdictSub").textContent="1H / 6H / 1D stay live from cached on-chain data, and the heartbeat below is always real-time.";
+  [["d1v","d1b"],["d2v","d2b"],["d3v","d3b"]].forEach(([v,b])=>driverBar(b,v,null));
+  const label = WINDOWS[key].label;
+  $("tradersNow").innerHTML="— <small>"+label+"</small>";
+  $("txNow").innerHTML="— <small>"+label+"</small>";
+  $("volNow").innerHTML="— <small>"+label+"</small>";
+  $("createdNow").innerHTML="— <small>"+label+"</small>";
+  $("migratedNow").innerHTML="— <small>"+label+"</small>";
+  ["tradersVs","txVs","volVs","createdVs","migratedVs"].forEach(id=>
+    $(id).innerHTML="<span class='caption'>unavailable — needs the live feed</span>");
+  $("termRows").innerHTML="<div class='caption' style='padding:14px 6px'>Terminal breakdown unavailable for this window until the live feed is connected.</div>";
 }
 
 function applyWindow(key){
   curWin = key;
-  const w = WINDOWS[key];
-  const z = zone(w.heat);
+  const meta = WINDOWS[key];
 
   // header segs + mini-grid highlights
   document.querySelectorAll(".segs button").forEach(b=>b.classList.toggle("on", b.dataset.w===key));
   document.querySelectorAll(".win").forEach(el=>el.classList.toggle("on", el.dataset.w===key));
+  $("gaugeWin").textContent = meta.label;
+  $("verdictWin").textContent = meta.label;
+  $("termWin").textContent = meta.label;
+
+  const w = getWin(key);
+  if(!w){ renderUnavailable(key); return; }
+
+  const ratio = (a,b) => (a!=null && b!=null && b>0) ? a/b : null;
+  const tr=ratio(w.traders,w.tradersTyp), xr=ratio(w.tx,w.txTyp), vr=ratio(w.vol,w.volTyp),
+        lr=ratio(w.created,w.createdTyp), mr=ratio(w.migrated,w.migratedTyp);
 
   // hero
   drawGauge(w.heat);
-  $("heatScore").textContent = Math.round(w.heat);
-  const lbl=$("heatLabel"); lbl.textContent=z.label; lbl.style.color=z.color;
-  $("gaugeWin").textContent = w.label;
-  $("verdictWin").textContent = w.label;
-  $("verdict").innerHTML = z.verdict;
-  $("verdictSub").textContent = z.sub;
-  driverBar("d1b","d1v", w.traders/w.tradersTyp);
-  driverBar("d2b","d2v", w.vol/w.volTyp);
-  driverBar("d3b","d3v", w.created/w.createdTyp);
+  if(w.heat==null){
+    $("heatScore").textContent="—";
+    const lbl=$("heatLabel"); lbl.textContent="CALIBRATING"; lbl.style.color="var(--muted)";
+    $("verdict").innerHTML="<b>Reading the market…</b> the “typical” baseline is still being established.";
+    $("verdictSub").textContent="Comparisons appear once the 7-day baseline is cached — the numbers below are live and real.";
+  } else {
+    const z = zone(w.heat);
+    $("heatScore").textContent = Math.round(w.heat);
+    const lbl=$("heatLabel"); lbl.textContent=z.label; lbl.style.color=z.color;
+    $("verdict").innerHTML = z.verdict;
+    $("verdictSub").textContent = z.sub;
+  }
+  driverBar("d1b","d1v", tr);
+  driverBar("d2b","d2v", vr);
+  driverBar("d3b","d3v", lr);
+
+  // deltas ("vs typical") with honest fallbacks when no baseline exists yet
+  const vs = (r, extra) => r==null
+    ? "<span class='caption'>vs typical unavailable"+(extra ? " · "+extra : "")+"</span>"
+    : "<span class='"+(r>=1?"up":"down")+" mono'>"+pct((r-1)*100)+"</span> <span class='caption'>"+(extra ? "vs typical · "+extra : "vs typical for this window")+"</span>";
 
   // launchpad cards
-  const lr=w.created/w.createdTyp, mr=w.migrated/w.migratedTyp;
-  const migRate=(w.migrated/w.created*100);
-  $("createdNow").innerHTML = fmtN(w.created)+" <small>tokens · "+w.label+"</small>";
-  $("createdVs").innerHTML = "<span class='"+(lr>=1?"up":"down")+" mono'>"+pct((lr-1)*100)+"</span> <span class='caption'>vs typical for this window</span>";
-  $("migratedNow").innerHTML = fmtN(w.migrated)+" <small>tokens · "+w.label+"</small>";
-  $("migratedVs").innerHTML = "<span class='"+(mr>=1?"up":"down")+" mono'>"+pct((mr-1)*100)+"</span> <span class='caption'>vs typical · "+migRate.toFixed(1)+"% of launches graduate</span>";
+  const migRate = w.created>0 ? (w.migrated/w.created*100).toFixed(1)+"% of launches graduate" : null;
+  $("createdNow").innerHTML = fmtN(w.created)+" <small>tokens · "+meta.label+"</small>";
+  $("createdVs").innerHTML = vs(lr);
+  $("migratedNow").innerHTML = fmtN(w.migrated)+" <small>tokens · "+meta.label+"</small>";
+  $("migratedVs").innerHTML = vs(mr, migRate);
 
   // metric cards
-  const tr=w.traders/w.tradersTyp, xr=w.tx/w.txTyp, vr=w.vol/w.volTyp;
-  $("tradersNow").innerHTML = fmtN(w.traders)+" <small>wallets · "+w.label+"</small>";
-  $("tradersVs").innerHTML = "<span class='"+(tr>=1?"up":"down")+" mono'>"+pct((tr-1)*100)+"</span> <span class='caption'>vs typical for this window</span>";
-  $("txNow").innerHTML = fmtN(w.tx)+" <small>trades · "+w.label+"</small>";
-  $("txVs").innerHTML = "<span class='"+(xr>=1?"up":"down")+" mono'>"+pct((xr-1)*100)+"</span> <span class='caption'>vs typical · "+fmtN(w.tx/w.traders)+" per trader</span>";
-  $("volNow").innerHTML = fmtUSD(w.vol)+" <small>"+w.label+"</small>";
-  $("volVs").innerHTML = "<span class='"+(vr>=1?"up":"down")+" mono'>"+pct((vr-1)*100)+"</span> <span class='caption'>vs typical for this window</span>";
+  $("tradersNow").innerHTML = fmtN(w.traders)+" <small>wallets · "+meta.label+"</small>";
+  $("tradersVs").innerHTML = vs(tr);
+  $("txNow").innerHTML = fmtN(w.tx)+" <small>trades · "+meta.label+"</small>";
+  $("txVs").innerHTML = vs(xr, w.traders>0 ? fmtN(w.tx/w.traders)+" per trader" : null);
+  $("volNow").innerHTML = fmtUSD(w.vol)+" <small>"+meta.label+"</small>";
+  $("volVs").innerHTML = vs(vr);
 
   // terminals
-  $("termWin").textContent = w.label;
-  const topShare = Math.max(...TERMINALS.map(t=>t.share[key]));
-  $("termRows").innerHTML = TERMINALS.map(t=>{
-    const s=t.share[key], vol=w.vol*s, trd=w.traders*s;
+  const rows = termRowsFor(key, w);
+  const topShare = Math.max(...rows.map(t=>t.share), 0.0001);
+  $("termRows").innerHTML = rows.map(t=>{
     return `<div class="term-row">
       <span class="term-name"><span class="term-dot" style="background:${t.color}"></span>${t.name}</span>
-      <span class="term-bar"><i style="width:${(s/topShare*95).toFixed(1)}%;background:${t.color}"></i></span>
-      <span class="num hide-m">${fmtN(trd)}</span>
-      <span class="num">${fmtUSD(vol)}</span>
-      <span class="num hide-m" style="color:var(--muted)">${Math.round(s*100)}%</span>
+      <span class="term-bar"><i style="width:${(t.share/topShare*95).toFixed(1)}%;background:${t.color}"></i></span>
+      <span class="num hide-m">${fmtN(t.traders)}</span>
+      <span class="num">${fmtUSD(t.vol)}</span>
+      <span class="num hide-m" style="color:var(--muted)">${Math.round(t.share*100)}%</span>
     </div>`;
   }).join("");
 }
@@ -437,9 +570,68 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const SLOT=13, BARW=9, SPEED=0.55;   // px per bar step / bar width / px per frame
 let samples=[], offset=0, level=2800;
 
+/* live heartbeat: Helius RPC via heartbeat-config, keyless public RPC as
+   fallback, demo waves only if both fail. Scale self-calibrates: TYPICAL =
+   rolling avg tps (seeded from up to 12h of getRecentPerformanceSamples),
+   SLOW/BUSY/FRENZY/CEIL = 0.5/1.55/1.95/2.2 × TYPICAL. */
+let rpcUrl=null, tpsTarget=null, tpsHistory=[], rpcFails=0;
+
+async function rpcCall(method, params){
+  const r = await fetch(rpcUrl, { method:"POST", headers:{ "content-type":"application/json" },
+    body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params }) });
+  if(!r.ok) throw new Error(String(r.status));
+  const j = await r.json();
+  if(j.error) throw new Error(j.error.message||"rpc");
+  return j.result;
+}
+
+function calibrateScale(){
+  if(!tpsHistory.length) return;
+  const avg = tpsHistory.reduce((a,b)=>a+b,0)/tpsHistory.length;
+  SCALE.TYPICAL=Math.round(avg); SCALE.SLOW=Math.round(avg*0.5);
+  SCALE.BUSY=Math.round(avg*1.55); SCALE.FRENZY=Math.round(avg*1.95); SCALE.CEIL=Math.round(avg*2.2);
+}
+
+async function initHeartbeat(){
+  try{
+    const cfg = await fetchJSON(`${CONFIG.api}/heartbeat-config`).catch(()=>null);
+    rpcUrl = (cfg && cfg.rpcUrl) || "https://api.mainnet-beta.solana.com";
+    const samples = await rpcCall("getRecentPerformanceSamples",[720]); // ≤12h, newest first
+    const tpsArr = samples.map(s=>s.numTransactions/s.samplePeriodSecs).filter(x=>isFinite(x)&&x>0);
+    if(tpsArr.length > 10){
+      tpsHistory = tpsArr.slice().reverse();
+      calibrateScale();
+      tpsTarget = tpsArr[0];
+      level = tpsTarget;
+    }
+    pollTps();
+  }catch(e){ /* both RPCs unreachable — demo waves keep the animation honest-ish under the demo badge */ }
+}
+
+async function pollTps(){
+  try{
+    const s = await rpcCall("getRecentPerformanceSamples",[1]);
+    const tps = s[0].numTransactions/s[0].samplePeriodSecs;
+    if(isFinite(tps) && tps>0){
+      tpsTarget = tps; rpcFails = 0;
+      tpsHistory.push(tps);
+      if(tpsHistory.length > 8640) tpsHistory.shift();   // ≈24h rolling window
+      calibrateScale();
+    }
+  }catch(e){
+    if(++rpcFails > 6) tpsTarget = null;                 // fall back to demo waves
+  }
+  setTimeout(pollTps, 10_000);
+}
+
 function nextSample(){
-  // Smooth demo signal: layered slow waves + a gentle random walk.
-  // Live mode: this eases toward the latest RPC tps reading instead.
+  if(tpsTarget != null){
+    // live: ease toward the latest RPC tps reading
+    level += (tpsTarget-level)*0.25;
+    level = Math.max(1, Math.min(SCALE.CEIL*0.98, level));
+    return level;
+  }
+  // demo signal: layered slow waves + a gentle random walk
   const t=Date.now()/1000;
   const target=3100+Math.sin(t/18)*1150+Math.sin(t/5.3)*420+Math.sin(t/47)*650;
   level += (target-level)*0.25 + (Math.random()-0.5)*130;
@@ -513,7 +705,10 @@ function drawPulse(){
   requestAnimationFrame(drawPulse);
 }
 function tickPulse(){
-  $("updated").textContent=new Date().toLocaleTimeString();
+  // live mode shows the data's own timestamp, not the wall clock
+  $("updated").textContent = (MODE==="live" && LIVE.asOf)
+    ? new Date(LIVE.asOf).toLocaleTimeString()
+    : new Date().toLocaleTimeString();
   if(reduced) $("pulseRate").textContent=Math.round(samples[samples.length-1]||0).toLocaleString()+" tx/s";
 }
 
@@ -522,7 +717,16 @@ function renderHistory(){
   const c=$("histChart"), ctx=c.getContext("2d");
   const r=sizeCanvas(c), W=r.width, H=r.height, pad={l:8,r:8,t:16,b:26};
   ctx.clearRect(0,0,W,H);
-  const data=history, max=Math.max(...data), n=data.length, gap=26;
+  const live = MODE==="live";
+  const data = live ? LIVE.history : history;
+  const times = live ? LIVE.historyT : null;
+  if(!data || !data.length){
+    ctx.fillStyle="#66708A"; ctx.font="12px 'IBM Plex Mono',monospace"; ctx.textAlign="center";
+    ctx.fillText("history not cached yet — first daily refresh pending", W/2, H/2);
+    $("histTotal").textContent="";
+    return;
+  }
+  const max=Math.max(...data), n=data.length, gap=26;
   const bw=(W-pad.l-pad.r-gap*(n-1))/n;
   const now=Date.now();
   data.forEach((v,i)=>{
@@ -535,8 +739,11 @@ function renderHistory(){
     ctx.fillStyle="#E9EDF6"; ctx.font="600 12px 'IBM Plex Mono',monospace"; ctx.textAlign="center";
     ctx.fillText(fmtUSD(v), x+bw/2, y-6);
     ctx.fillStyle="#66708A"; ctx.font="10px 'IBM Plex Mono',monospace";
-    const d=new Date(now-(n-1-i)*864e5);
-    ctx.fillText(i===n-1?"Today":d.toLocaleDateString("en-US",{weekday:"short"}), x+bw/2, H-8);
+    // live bars carry real day timestamps (complete UTC days); demo counts back from today
+    const lbl = times
+      ? new Date(times[i]).toLocaleDateString("en-US",{weekday:"short", timeZone:"UTC"})
+      : (i===n-1 ? "Today" : new Date(now-(n-1-i)*864e5).toLocaleDateString("en-US",{weekday:"short"}));
+    ctx.fillText(lbl, x+bw/2, H-8);
   });
   $("histTotal").textContent="5d total "+fmtUSD(data.reduce((a,b)=>a+b,0));
 }
@@ -545,8 +752,13 @@ function renderHistory(){
 buildWindowGrids();
 applyWindow(curWin);
 renderHistory();
+setBadge();
 drawPulse(); tickPulse(); setInterval(tickPulse, 1200);
-addEventListener("resize", ()=>{ applyWindow(curWin); renderHistory(); });
+$("solPrice").textContent="—";           // never show a made-up price
+loadLive(); setInterval(loadLive, CONFIG.refreshMs);
+initHeartbeat();
+pollSol();
+addEventListener("resize", ()=>{ buildWindowGrids(); applyWindow(curWin); renderHistory(); });
 </script>
 </body>
 </html>

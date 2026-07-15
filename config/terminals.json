@@ -1,11 +1,144 @@
 {
-  "_readme": "Fee-account registry. A 'trader' = unique wallet whose tx paid one of these accounts in the window. Addresses must be verified against Dune community mappings (adam_tehc 'Trading Bots on Solana', spellbook dex_solana.bot_trades) before being added. Adding/rotating an account is a one-line change to feeAccounts.",
+  "_readme": [
+    "Fee-account registry — the single source of truth for terminal attribution.",
+    "A 'trader' = unique wallet whose tx paid one of these accounts in the window.",
+    "feeAccounts: currently active. retiredFeeAccounts: kept for historical queries,",
+    "excluded from Phase 2 webhook registration. After editing, run `npm run gen:sql`",
+    "and update the saved Dune queries with the regenerated SQL in /queries.",
+    "All addresses verified 2026-07-15 against: Dune spellbook (commit 4ffd04f),",
+    "adam_tehc Dune query 7872003 + per-terminal queries, DefiLlama dimension-adapters,",
+    "Solscan entity labels. Per-terminal provenance in 'sources'/'notes'."
+  ],
   "terminals": [
-    { "name": "Axiom",   "color": "#9945FF", "feeAccounts": [] },
-    { "name": "Photon",  "color": "#14F195", "feeAccounts": [] },
-    { "name": "GMGN",    "color": "#FFB454", "feeAccounts": [] },
-    { "name": "BullX",   "color": "#3D7BFF", "feeAccounts": [] },
-    { "name": "Trojan",  "color": "#FF5470", "feeAccounts": [] },
-    { "name": "Phantom", "color": "#B39DFF", "feeAccounts": [] }
+    {
+      "name": "Axiom",
+      "color": "#9945FF",
+      "feeAccounts": [
+        "7oi1L8U9MRu5zDz5syFahsiLUric47LzvJBQX6r827ws",
+        "9kPrgLggBJ69tx1czYAbp7fezuUmL337BsqQTKETUEhP",
+        "DKyUs1xXMDy8Z11zNsLnUg3dy9HZf6hYZidB6WodcaGy",
+        "4FobGn5ZWYquoJkxMzh2VUAWvV36xMgxQ3M7uG1pGGhd",
+        "76sxKrPtgoJHDJvxwFHqb3cAXWfRHFLe3VpKcLCAHSEf",
+        "H2cDR3EkJjtTKDQKk8SJS48du9mhsdzQhy8xJx5UMqQK",
+        "8m5GkL7nVy95G4YVUbs79z873oVKqg2afgKRmqxsiiRm",
+        "4kuG6NsAFJNwqEkac8GFDMMheCGKUPEbaRVHHyFHSwWz",
+        "8vFGAKdwpn4hk7kc1cBgfWZzpyW3MEMDATDzVZhddeQb",
+        "86Vh4XGLW2b6nvWbRyDs4ScgMXbuvRCHT7WbUT3RFxKG",
+        "DZfEurFKFtSbdWZsKSDTqpqsQgvXxmESpvRtXkAdgLwM",
+        "5L2QKqDn5ukJSWGyqR4RPvFvwnBabKWqAqMzH4heaQNB",
+        "DYVeNgXGLAhZdeLMMYnCw1nPnMxkBN7fJnNpHmizTrrF",
+        "Hbj6XdxX6eV4nfbYTseysibp4zZJtVRRPn2J3BhGRuK9",
+        "846ah7iBSu9ApuCyEhA5xpnjHHX7d4QJKetWLbwzmJZ8",
+        "5BqYhuD4q1YD3DMAYkc1FeTu9vqQVYYdfBAmkZjamyZg"
+      ],
+      "retiredFeeAccounts": [
+        "7LCZckF6XXGQ1hDY6HFXBKWAtiUgL9QY5vj1C4Bn1Qjj",
+        "4V65jvcDG9DSQioUVqVPiUcUY9v6sb6HKtMnsxSKEz5S",
+        "CeA3sPZfWWToFEBmw5n1Y93tnV66Vmp8LacLzsVprgxZ",
+        "AaG6of1gbj1pbDumvbSiTuJhRCRkkUNaWVxijSbWvTJW"
+      ],
+      "sources": [
+        "https://dune.com/queries/7872003",
+        "https://raw.githubusercontent.com/DefiLlama/dimension-adapters/master/fees/axiom.ts",
+        "https://solscan.io/account/7LCZckF6XXGQ1hDY6HFXBKWAtiUgL9QY5vj1C4Bn1Qjj"
+      ],
+      "notes": "adam_tehc + DefiLlama agree 1:1 on all 20. Retired set marked 'Pre May 20th 2025' in adam_tehc SQL. Solscan labels 7LCZc 'Axiom: Fees'. Excluded: AxiomRXZ/AxiomRYA cashback wallets (outflows), 6JfTobDv (Lavarage margin, not Axiom)."
+    },
+    {
+      "name": "Photon",
+      "color": "#14F195",
+      "feeAccounts": [
+        "AVUCZyuT35YSuj4RH7fwiyPu82Djn2Hfg7y2ND2XcnZH"
+      ],
+      "retiredFeeAccounts": [],
+      "sources": [
+        "https://github.com/duneanalytics/spellbook/pull/7495",
+        "https://dune.com/queries/7872003",
+        "https://raw.githubusercontent.com/DefiLlama/dimension-adapters/master/fees/photon.ts",
+        "https://solscan.io/account/AVUCZyuT35YSuj4RH7fwiyPu82Djn2Hfg7y2ND2XcnZH"
+      ],
+      "notes": "Strongest confirmation of the set (4 independent sources). Solscan label 'Photon Fee Vault', live fee inflows as of 2026-07-14."
+    },
+    {
+      "name": "GMGN",
+      "color": "#FFB454",
+      "feeAccounts": [
+        "BB5dnY55FXS1e1NXqZDwCzgdYJdMCj3B92PU6Q5Fb6DT",
+        "7sHXjs1j7sDJGVSMSPjD1b4v3FD6uRSvRWfhRdfv5BiA",
+        "HeZVpHj9jLwTVtMMbzQRf6mLtFPkWNSg11o68qrbUBa3",
+        "ByRRgnZenY6W2sddo1VJzX9o4sMU4gPDUkcmgrpGBxRy",
+        "DXfkEGoo6WFsdL7x6gLZ7r6Hw2S6HrtrAQVPWYx2A1s9",
+        "3t9EKmRiAUcQUYzTZpNojzeGP1KBAVEEbDNmy6wECQpK",
+        "DymeoWc5WLNiQBaoLuxrxDnDRvLgGZ1QGsEoCAM7Jsrx",
+        "dBhdrmwBkRa66XxBuAK4WZeZnsZ6bHeHCCLXa3a8bTJ",
+        "6TxjC5wJzuuZgTtnTMipwwULEbMPx5JPW3QwWkdTGnrn"
+      ],
+      "retiredFeeAccounts": [],
+      "sources": [
+        "https://dune.com/queries/7887992",
+        "https://raw.githubusercontent.com/DefiLlama/dimension-adapters/master/fees/gmgnai.ts",
+        "https://solscan.io/account/BB5dnY55FXS1e1NXqZDwCzgdYJdMCj3B92PU6Q5Fb6DT"
+      ],
+      "notes": "DefiLlama comment: verified on-chain 2026-06 as pure fee collectors sweeping to one treasury. Solscan labels BB5d 'GMGN Fees Vault'. Fees arrive in SOL and USDC. Excluded: referral-payout wallets (EzcD/Tw5u/69SN), funding wallet BCNs."
+    },
+    {
+      "name": "BullX",
+      "color": "#3D7BFF",
+      "feeAccounts": [
+        "9RYJ3qr5eU5xAooqVcbmdeusjcViL5Nkiq7Gske3tiKq"
+      ],
+      "retiredFeeAccounts": [
+        "F4hJ3Ee3c5UuaorKAMfELBjYCjiiLH75haZTKqTywRP3"
+      ],
+      "sources": [
+        "https://github.com/duneanalytics/spellbook/pull/7858",
+        "https://dune.com/queries/7872003",
+        "https://solscan.io/account/9RYJ3qr5eU5xAooqVcbmdeusjcViL5Nkiq7Gske3tiKq"
+      ],
+      "notes": "All three research passes agree; wallet switch dated 2024-11-16 in two sources. Solscan label 'Bullx Fees'. Terminal effectively dead as of mid-2026 ($1/day fees) — near-zero rows expected, which is honest data."
+    },
+    {
+      "name": "Trojan",
+      "color": "#FF5470",
+      "feeAccounts": [
+        "9yMwSPk9mrXSN7yDHUuZurAh1sjbJsfpUqjZ7SvVtdco",
+        "92Med3qeK7duC5iiYsHX38H2f2twJfRsSx93oNrza2VH",
+        "2jwHNxavSoMZMEDbT1eV9PcPt5dDcayCqM6MkgaPpmWQ",
+        "65gDv7pZQCZELsNpNYSFEBtNFpWZAbxmRFB6BGMqFkHH",
+        "BWgb8wR1FEGiu1jCDSKuHKf752W27b4iN6SvoNCiK4qp",
+        "8jgg7moFJkHyTtAv9M6RBSPMp2oXeXhuiUMKW8YbYCWn"
+      ],
+      "retiredFeeAccounts": [
+        "BBYXdwhqbCxVRVtnuMTTxh8biNisz3ZxsnHfr44jXytR"
+      ],
+      "sources": [
+        "https://github.com/duneanalytics/spellbook/blob/4ffd04ff5b4263c81910285ac2d357542925bf51/dbt_subprojects/solana/models/_sector/dex/bot_trades/solana/platforms/trojan_solana_bot_trades.sql",
+        "https://dune.com/queries/6528038",
+        "https://raw.githubusercontent.com/DefiLlama/dimension-adapters/master/fees/primordium.ts"
+      ],
+      "notes": "9yMw = bot fee wallet, 4+ sources. 92Med/2jwH/65gD/BWgb/8jgg = Trojan Terminal (web) wallets per adam_tehc 6528038 + DefiLlama (current 2026-06-23) — medium confidence, unlabeled on Solscan. BBYX appears only in the merged spellbook model (likely older receiver) — parked in retired. Excluded: Primordium treasury sweeps DrXMnPrF/CvdzGdvw (would double-count)."
+    },
+    {
+      "name": "Phantom",
+      "color": "#B39DFF",
+      "feeAccounts": [
+        "25mYnjJ2MXHZH6NvTTdA63JvjgRVcuiaj6MRiEQNs1Dq",
+        "9yj3zvLS3fDMqi1F8zhkaWfq8TZpZWHe6cz1Sgt7djXf",
+        "8psNvWTrdNTiVRNzAgsou9kETXNJm2SXZyaKuJraVRtf",
+        "tzvXws1qhmfdPkPcprezULCDQPAJqzPhbZ3SMrqRPNE",
+        "CnmA6Zb8hLrG33AT4RTzKdGv1vKwRBKQQr8iNckvv8Yg",
+        "2rQZb9xqQGwoCMDkpabbzDB9wyPTjSPj9WNhJodTaRHm",
+        "9gnLg6NtVxaASvxtADLFKZ9s8yHft1jXb1Vu6gVKvh1J",
+        "wtpXRqKLdGc7vpReogsRugv6EFCw4HBHcxm8pFcR84a",
+        "D1NJy3Qq3RKBG29EDRj28ozbGwnhmM5yBUp8PonSYUnm"
+      ],
+      "retiredFeeAccounts": [],
+      "sources": [
+        "https://github.com/duneanalytics/spellbook/blob/4ffd04ff5b4263c81910285ac2d357542925bf51/dbt_subprojects/solana/models/_sector/dex/phantom_swapper/phantom_swapper_solana_fee_addresses.sql",
+        "https://raw.githubusercontent.com/DefiLlama/dimension-adapters/master/fees/phantom.ts",
+        "https://solscan.io/account/25mYnjJ2MXHZH6NvTTdA63JvjgRVcuiaj6MRiEQNs1Dq"
+      ],
+      "notes": "First 4 = static swap-fee owners (tzv is spellbook-only). Last 5 = Jupiter referral accounts under Phantom's referral project 45ruCyf... — fees land in token accounts they own, so SQL matches on token-balance OWNER, not address. Solscan labels 25mY 'Phantom: Swap Fees'. Softest attribution of the six; slight undercount possible."
+    }
   ]
 }

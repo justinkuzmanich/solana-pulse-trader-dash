@@ -1,0 +1,15 @@
+{
+  "name": "solana-trade-pulse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "gen:sql": "node scripts/gen-dune-sql.mjs",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.38.0"
+  }
+}

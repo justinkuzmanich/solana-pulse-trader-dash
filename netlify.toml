@@ -11,5 +11,6 @@
   # source of truth (config/terminals.json) at runtime.
   included_files = ["config/terminals.json"]
 
-# dune-refresh runs on a schedule (declared here so it never runs per page load).
-# Added in Phase 1; see CLAUDE.md "Data pipeline".
+# dune-refresh's schedule ("*/5 * * * *" tick; real Dune executions are
+# cadence- and credit-gated) is declared in-code via `export const config`
+# in netlify/functions/dune-refresh.ts. It never runs per page load.
