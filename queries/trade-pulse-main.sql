@@ -1,5 +1,5 @@
 -- Solana Trade Pulse — MAIN stats query (generated from config/terminals.json; do not edit by hand)
--- Result columns: section, bucket, terminal, traders, tx, vol, created, migrated
+-- Result columns: section, bucket, terminal, traders, tx, vol, created, migrated, max_bt
 WITH fee_accounts (terminal, address) AS (
   VALUES
     ('Axiom', '7oi1L8U9MRu5zDz5syFahsiLUric47LzvJBQX6r827ws'),
@@ -83,34 +83,19 @@ launch_ix AS (
 )
 SELECT 'window' AS section, w.win AS bucket, COALESCE(tt.terminal, '__total__') AS terminal,
        COUNT(DISTINCT tt.trader_id) AS traders, COUNT(DISTINCT tt.tx_id) AS tx, SUM(tt.amount_usd) AS vol,
-       CAST(NULL AS bigint) AS created, CAST(NULL AS bigint) AS migrated
+       CAST(NULL AS bigint) AS created, CAST(NULL AS bigint) AS migrated,
+       to_unixtime(MAX(tt.block_time)) AS max_bt
 FROM term_trades tt
 CROSS JOIN (VALUES ('1h', 1), ('6h', 6), ('24h', 24)) AS w(win, hrs)
 WHERE tt.block_time >= now() - interval '1' hour * w.hrs
 GROUP BY GROUPING SETS ((w.win, tt.terminal), (w.win))
 
 UNION ALL
-SELECT 'hourly', CAST(CAST(to_unixtime(date_trunc('hour', tt.block_time)) AS bigint) AS varchar), '__total__',
-       COUNT(DISTINCT tt.trader_id), COUNT(DISTINCT tt.tx_id), SUM(tt.amount_usd), NULL, NULL
-FROM term_trades tt
-GROUP BY date_trunc('hour', tt.block_time)
-
-UNION ALL
 SELECT 'window', w.win, '__launch__',
-       NULL, NULL, NULL,
-       COUNT(CASE WHEN kind = 'created' THEN 1 END), COUNT(CASE WHEN kind = 'migrated' THEN 1 END)
+       CAST(NULL AS bigint), CAST(NULL AS bigint), CAST(NULL AS double),
+       COUNT(CASE WHEN kind = 'created' THEN 1 END), COUNT(CASE WHEN kind = 'migrated' THEN 1 END),
+       CAST(NULL AS double)
 FROM launch_ix
 CROSS JOIN (VALUES ('1h', 1), ('6h', 6), ('24h', 24)) AS w(win, hrs)
 WHERE block_time >= now() - interval '1' hour * w.hrs
 GROUP BY w.win
-
-UNION ALL
-SELECT 'hourly', CAST(CAST(to_unixtime(date_trunc('hour', block_time)) AS bigint) AS varchar), '__launch__',
-       NULL, NULL, NULL,
-       COUNT(CASE WHEN kind = 'created' THEN 1 END), COUNT(CASE WHEN kind = 'migrated' THEN 1 END)
-FROM launch_ix
-GROUP BY date_trunc('hour', block_time)
-
-UNION ALL
-SELECT 'meta', 'max_block_time', '__total__', NULL, NULL, to_unixtime(MAX(tt.block_time)), NULL, NULL
-FROM term_trades tt

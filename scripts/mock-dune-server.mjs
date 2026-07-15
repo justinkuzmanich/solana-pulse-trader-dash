@@ -25,20 +25,13 @@ function mainRows() {
     const j = jitter();
     // uniques don't scale linearly with window length; cheap approximation is fine for a mock
     const uniq = Math.pow(f, 0.75);
-    rows.push(row("window", win, "__total__", DAY.traders * uniq * j, DAY.tx * f * j, DAY.vol * f * j));
+    rows.push({ ...row("window", win, "__total__", DAY.traders * uniq * j, DAY.tx * f * j, DAY.vol * f * j), max_bt: nowSec - 90 });
     rows.push({ ...row("window", win, "__launch__"), created: Math.round(DAY.created * f * j), migrated: Math.round(DAY.migrated * f * j) });
     for (const t of TERMS) {
       const s = SHARE[t];
       rows.push(row("window", win, t, DAY.traders * uniq * s * j, DAY.tx * f * s * j, DAY.vol * f * s * j));
     }
   }
-  for (let h = 24; h >= 1; h--) {
-    const t = Math.floor((nowSec - h * 3600) / 3600) * 3600;
-    const j = jitter();
-    rows.push(row("hourly", String(t), "__total__", (DAY.traders / 24) * 2.2 * j, (DAY.tx / 24) * j, (DAY.vol / 24) * j));
-    rows.push({ ...row("hourly", String(t), "__launch__"), created: Math.round((DAY.created / 24) * j), migrated: Math.round((DAY.migrated / 24) * j) });
-  }
-  rows.push({ section: "meta", bucket: "max_block_time", terminal: "__total__", traders: null, tx: null, vol: nowSec - 90, created: null, migrated: null });
   return rows;
 }
 

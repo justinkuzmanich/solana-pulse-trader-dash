@@ -84,43 +84,35 @@ function timeFilter(col, lookbackHoursOrDays, complete) {
     AND ${col} < date_trunc('day', now())`;
 }
 
-/* ---------------- 1. MAIN query: windows + hourly, every refresh ---------------- */
+/* ---------------- 1. MAIN query: windows only, every refresh ----------------
+   Single reference to term_trades and a single reference to launch_ix — each
+   is the expensive part (a join through solana.account_activity), so every
+   extra UNION ALL branch that re-references either CTE risks re-deriving it
+   from scratch. (Free-tier Small engine has a hard 2-minute cap; there is no
+   Medium/Large on Free, so this query must stay a single pass over each.)
+   asOf is folded in as an extra column (max_bt) instead of a separate branch
+   that would trigger a third term_trades derivation. */
 const mainSql = `-- Solana Trade Pulse — MAIN stats query (generated from config/terminals.json; do not edit by hand)
--- Result columns: section, bucket, terminal, traders, tx, vol, created, migrated
+-- Result columns: section, bucket, terminal, traders, tx, vol, created, migrated, max_bt
 ${baseCtes(24)}
 SELECT 'window' AS section, w.win AS bucket, COALESCE(tt.terminal, '__total__') AS terminal,
        COUNT(DISTINCT tt.trader_id) AS traders, COUNT(DISTINCT tt.tx_id) AS tx, SUM(tt.amount_usd) AS vol,
-       CAST(NULL AS bigint) AS created, CAST(NULL AS bigint) AS migrated
+       CAST(NULL AS bigint) AS created, CAST(NULL AS bigint) AS migrated,
+       to_unixtime(MAX(tt.block_time)) AS max_bt
 FROM term_trades tt
 CROSS JOIN (VALUES ('1h', 1), ('6h', 6), ('24h', 24)) AS w(win, hrs)
 WHERE tt.block_time >= now() - interval '1' hour * w.hrs
 GROUP BY GROUPING SETS ((w.win, tt.terminal), (w.win))
 
 UNION ALL
-SELECT 'hourly', CAST(CAST(to_unixtime(date_trunc('hour', tt.block_time)) AS bigint) AS varchar), '__total__',
-       COUNT(DISTINCT tt.trader_id), COUNT(DISTINCT tt.tx_id), SUM(tt.amount_usd), NULL, NULL
-FROM term_trades tt
-GROUP BY date_trunc('hour', tt.block_time)
-
-UNION ALL
 SELECT 'window', w.win, '__launch__',
-       NULL, NULL, NULL,
-       COUNT(CASE WHEN kind = 'created' THEN 1 END), COUNT(CASE WHEN kind = 'migrated' THEN 1 END)
+       CAST(NULL AS bigint), CAST(NULL AS bigint), CAST(NULL AS double),
+       COUNT(CASE WHEN kind = 'created' THEN 1 END), COUNT(CASE WHEN kind = 'migrated' THEN 1 END),
+       CAST(NULL AS double)
 FROM launch_ix
 CROSS JOIN (VALUES ('1h', 1), ('6h', 6), ('24h', 24)) AS w(win, hrs)
 WHERE block_time >= now() - interval '1' hour * w.hrs
 GROUP BY w.win
-
-UNION ALL
-SELECT 'hourly', CAST(CAST(to_unixtime(date_trunc('hour', block_time)) AS bigint) AS varchar), '__launch__',
-       NULL, NULL, NULL,
-       COUNT(CASE WHEN kind = 'created' THEN 1 END), COUNT(CASE WHEN kind = 'migrated' THEN 1 END)
-FROM launch_ix
-GROUP BY date_trunc('hour', block_time)
-
-UNION ALL
-SELECT 'meta', 'max_block_time', '__total__', NULL, NULL, to_unixtime(MAX(tt.block_time)), NULL, NULL
-FROM term_trades tt
 `;
 
 /* ---------------- 2. HISTORY query: last 5 complete days, daily ---------------- */

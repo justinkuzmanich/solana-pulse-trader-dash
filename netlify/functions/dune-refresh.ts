@@ -142,25 +142,18 @@ async function processJob(job: Job, rows: Record<string, any>[], state: any) {
 
 async function processMain(rows: Record<string, any>[]) {
   const windows: any = { "1h": emptyWin(), "6h": emptyWin(), "24h": emptyWin() };
-  const hourly: Record<string, any> = {};
   let asOfMs: number | null = null;
 
   for (const r of rows) {
     const sec = r.section, bucket = String(r.bucket ?? ""), term = r.terminal;
-    if (sec === "meta" && bucket === "max_block_time" && r.vol != null) {
-      asOfMs = Math.round(Number(r.vol) * 1000);
-    } else if (sec === "window" && windows[bucket]) {
-      if (term === "__total__") {
-        Object.assign(windows[bucket], { traders: num(r.traders), tx: num(r.tx), vol: num(r.vol) });
-      } else if (term === "__launch__") {
-        Object.assign(windows[bucket], { created: num(r.created), migrated: num(r.migrated) });
-      } else {
-        windows[bucket].terminals.push({ name: term, traders: num(r.traders), tx: num(r.tx), vol: num(r.vol) });
-      }
-    } else if (sec === "hourly") {
-      const h = (hourly[bucket] ??= { t: Number(bucket) * 1000 });
-      if (term === "__total__") Object.assign(h, { traders: num(r.traders), tx: num(r.tx), vol: num(r.vol) });
-      else if (term === "__launch__") Object.assign(h, { created: num(r.created), migrated: num(r.migrated) });
+    if (sec !== "window" || !windows[bucket]) continue;
+    if (term === "__total__") {
+      Object.assign(windows[bucket], { traders: num(r.traders), tx: num(r.tx), vol: num(r.vol) });
+      if (r.max_bt != null) asOfMs = Math.max(asOfMs ?? 0, Math.round(Number(r.max_bt) * 1000));
+    } else if (term === "__launch__") {
+      Object.assign(windows[bucket], { created: num(r.created), migrated: num(r.migrated) });
+    } else {
+      windows[bucket].terminals.push({ name: term, traders: num(r.traders), tx: num(r.tx), vol: num(r.vol) });
     }
   }
 
@@ -174,12 +167,7 @@ async function processMain(rows: Record<string, any>[]) {
   }
 
   const asOf = new Date(asOfMs ?? Date.now()).toISOString();
-  await setJSON("stats", {
-    asOf,
-    updatedAt: new Date().toISOString(),
-    windows,
-    hourly: Object.values(hourly).sort((a: any, b: any) => a.t - b.t),
-  });
+  await setJSON("stats", { asOf, updatedAt: new Date().toISOString(), windows });
 
   // rolling snapshot log → self-computing "typical" baselines after 7 days
   const snapshots: any[] = ((await getJSON("snapshots")) ?? []).filter(
