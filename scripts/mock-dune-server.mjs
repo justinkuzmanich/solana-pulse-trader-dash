@@ -36,18 +36,21 @@ function mainRows() {
 }
 
 function baselineRows() {
+  // Real query now returns ONE day's raw (unaveraged) per-bucket values —
+  // mock matches (day_*/lday_* sections; dune-refresh does the averaging).
   const rows = [];
+  const j = jitter();
   for (let h = 0; h < 24; h++) {
     const shape = 0.7 + 0.5 * Math.sin(((h - 20 + 24) % 24) / 24 * 2 * Math.PI); // US-evening hump
-    rows.push(row("base_1h", String(h), "__total__", (DAY.traders / 24) * 2.2 * shape, (DAY.tx / 24) * shape, (DAY.vol / 24) * shape));
-    rows.push({ ...row("lbase_1h", String(h), "__launch__"), created: Math.round((DAY.created / 24) * shape), migrated: Math.round((DAY.migrated / 24) * shape) });
+    rows.push(row("day_1h", String(h), "__total__", (DAY.traders / 24) * 2.2 * shape * j, (DAY.tx / 24) * shape * j, (DAY.vol / 24) * shape * j));
+    rows.push({ ...row("lday_1h", String(h), "__launch__"), created: Math.round((DAY.created / 24) * shape * j), migrated: Math.round((DAY.migrated / 24) * shape * j) });
   }
   for (let b = 0; b < 4; b++) {
-    rows.push(row("base_6h", String(b), "__total__", DAY.traders * 0.42, DAY.tx / 4, DAY.vol / 4));
-    rows.push({ ...row("lbase_6h", String(b), "__launch__"), created: Math.round(DAY.created / 4), migrated: Math.round(DAY.migrated / 4) });
+    rows.push(row("day_6h", String(b), "__total__", DAY.traders * 0.42 * j, (DAY.tx / 4) * j, (DAY.vol / 4) * j));
+    rows.push({ ...row("lday_6h", String(b), "__launch__"), created: Math.round((DAY.created / 4) * j), migrated: Math.round((DAY.migrated / 4) * j) });
   }
-  rows.push(row("base_24h", "0", "__total__", DAY.traders, DAY.tx, DAY.vol));
-  rows.push({ ...row("lbase_24h", "0", "__launch__"), created: DAY.created, migrated: DAY.migrated });
+  rows.push(row("day_24h", "0", "__total__", DAY.traders * j, DAY.tx * j, DAY.vol * j));
+  rows.push({ ...row("lday_24h", "0", "__launch__"), created: Math.round(DAY.created * j), migrated: Math.round(DAY.migrated * j) });
   return rows;
 }
 

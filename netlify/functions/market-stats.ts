@@ -1,8 +1,9 @@
 // GET /.netlify/functions/market-stats?window=5m|1h|6h|24h
 // Serves from the Blobs cache only — never calls Dune per page load.
-// *Typ baselines: local snapshot history once it covers 7 days (same window,
-// same time of day), else the daily Dune baseline query; null when neither
-// exists yet (frontend shows the calibrating state — values are never invented).
+// *Typ baselines: the daily Dune baseline query once it has >=3 days of real
+// per-hour data (precise), else our own accumulated snapshot history once it
+// covers 7 days (coarser point samples), else null — frontend shows the
+// calibrating state; values are never invented.
 import { getJSON } from "../lib/store";
 
 export default async (req: Request) => {
@@ -25,7 +26,7 @@ export default async (req: Request) => {
   const asOfMs = Date.parse(stats.asOf);
 
   const typ =
-    (await typFromSnapshots(win, asOfMs)) ?? (await typFromBaselines(win, asOfMs));
+    (await typFromBaselines(win, asOfMs)) ?? (await typFromSnapshots(win, asOfMs));
 
   const payload: any = {
     window: win,
@@ -72,10 +73,12 @@ async function typFromSnapshots(win: string, asOfMs: number) {
   return { traders: avg("traders"), tx: avg("tx"), vol: avg("vol"), created: avg("created"), migrated: avg("migrated"), source: "snapshots" };
 }
 
-/* ---- bootstrap typical values from the daily Dune baseline query ---- */
+/* ---- typical values from the daily Dune baseline query (>=3 days of real
+   per-hour data — preferred over snapshots once available: precise hourly
+   buckets vs. sparse point samples) ---- */
 async function typFromBaselines(win: string, asOfMs: number) {
   const b: any = await getJSON("baselines");
-  if (!b?.base) return null;
+  if (!b?.base || (b.daysCovered ?? 0) < 3) return null;
   const hour = new Date(asOfMs).getUTCHours();
   const bucket = win === "1h" ? String(hour) : win === "6h" ? String(Math.floor(hour / 6)) : "0";
   const t = b.base[win]?.[bucket];

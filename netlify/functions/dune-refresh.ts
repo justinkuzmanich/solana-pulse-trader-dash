@@ -12,9 +12,9 @@ import { TERMINAL_NAMES } from "../lib/registry";
 type Job = "main" | "baseline";
 const JOBS: Job[] = ["main", "baseline"];
 // conservative per-run credit estimates, used only as a fallback until the API
-// reports an actual (main/baseline scan solana.account_activity on Small
+// reports an actual (both scan one day of solana.account_activity on Small
 // engine, single-pass — real cost confirmed once the first live execution completes)
-const EST_CREDITS: Record<Job, number> = { main: 20, baseline: 35 };
+const EST_CREDITS: Record<Job, number> = { main: 20, baseline: 25 };
 
 const QUERY_ENV: Record<Job, string> = {
   main: "DUNE_QUERY_MAIN",
@@ -69,15 +69,11 @@ export default async () => {
   const cadenceMin = Number(process.env.REFRESH_MINUTES ?? 120);
   const dayMin = 24 * 60;
 
-  const snapshots: any[] = (await getJSON("snapshots")) ?? [];
-  const coverageDays = snapshots.length
-    ? (Date.now() - snapshots[0].t) / 86_400_000
-    : 0;
-
+  // baseline is now a cheap 1-day scan too (see gen-dune-sql.mjs) — runs
+  // daily forever, rolling its own 7-day average in processJob below.
   const due: Array<[Job, number, boolean]> = [
     ["main", cadenceMin, true],
-    // baseline only needed until local snapshots cover 7 days
-    ["baseline", dayMin, coverageDays < 7.5],
+    ["baseline", dayMin, true],
   ];
 
   for (const [job, everyMin, wanted] of due) {
@@ -112,21 +108,66 @@ export const config = { schedule: "*/5 * * * *" };
 
 async function processJob(job: Job, rows: Record<string, any>[], state: any) {
   if (job === "main") return processMain(rows);
-  // baseline
+
+  // baseline: query returns ONE day's raw per-bucket values (section
+  // day_1h/day_6h/day_24h, lday_*) — accumulate into a rolling 7-day array
+  // keyed by the day the scan covers, then average across whatever's stored
+  // (see gen-dune-sql.mjs for why this is 1-day scoped instead of 7-day).
   const base: any = {};
   const lbase: any = {};
   for (const r of rows) {
     const sec = String(r.section ?? "");
     const bucket = String(r.bucket ?? "");
-    if (sec.startsWith("base_")) {
-      const win = sec.slice(5);
+    if (sec.startsWith("day_")) {
+      const win = sec.slice(4);
       (base[win] ??= {})[bucket] = { traders: num(r.traders), tx: num(r.tx), vol: num(r.vol) };
-    } else if (sec.startsWith("lbase_")) {
-      const win = sec.slice(6);
+    } else if (sec.startsWith("lday_")) {
+      const win = sec.slice(5);
       (lbase[win] ??= {})[bucket] = { created: num(r.created), migrated: num(r.migrated) };
     }
   }
-  await setJSON("baselines", { base, lbase, updatedAt: new Date().toISOString() });
+
+  // the SQL scans "yesterday" relative to when it runs — key by that date
+  const scannedDay = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const days: any[] = ((await getJSON("baselineDays")) ?? [])
+    .filter((d: any) => d.day !== scannedDay);
+  days.push({ day: scannedDay, base, lbase });
+  days.sort((a: any, b: any) => a.day.localeCompare(b.day));
+  const trimmed = days.slice(-7);
+  await setJSON("baselineDays", trimmed);
+
+  await setJSON("baselines", {
+    base: averageAcrossDays(trimmed, "base", ["traders", "tx", "vol"]),
+    lbase: averageAcrossDays(trimmed, "lbase", ["created", "migrated"]),
+    daysCovered: trimmed.length,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+/** Averages per-bucket field values across N stored daily readings. */
+function averageAcrossDays(days: any[], key: "base" | "lbase", fields: string[]) {
+  const sums: Record<string, Record<string, Record<string, number>>> = {};
+  const counts: Record<string, Record<string, number>> = {};
+  for (const d of days) {
+    for (const [win, buckets] of Object.entries<any>(d[key] ?? {})) {
+      sums[win] ??= {};
+      counts[win] ??= {};
+      for (const [bucket, vals] of Object.entries<any>(buckets)) {
+        sums[win][bucket] ??= Object.fromEntries(fields.map((f) => [f, 0]));
+        counts[win][bucket] = (counts[win][bucket] ?? 0) + 1;
+        for (const f of fields) sums[win][bucket][f] += num(vals[f]);
+      }
+    }
+  }
+  const out: any = {};
+  for (const win of Object.keys(sums)) {
+    out[win] = {};
+    for (const bucket of Object.keys(sums[win])) {
+      const n = counts[win][bucket];
+      out[win][bucket] = Object.fromEntries(fields.map((f) => [f, sums[win][bucket][f] / n]));
+    }
+  }
+  return out;
 }
 
 async function processMain(rows: Record<string, any>[]) {

@@ -115,55 +115,53 @@ WHERE block_time >= now() - interval '1' hour * w.hrs
 GROUP BY w.win
 `;
 
-/* ---------------- 2. BASELINE query: 7 complete days, daily until local history accumulates ----------------
-   Same single-reference-per-CTE principle as the main query. GROUPING SETS
-   computes the 1h/6h/24h bucket granularities in one pass over term_trades
-   (and one pass over launch_ix) instead of three separate re-derivations —
-   exactly one column of (h1, h6) is non-NULL per output row (h1 always
-   0..23, never NULL, so a NULL there unambiguously means "not this
-   grouping"), which is what identifies which bucket size a row belongs to. */
-const baselineSql = `-- Solana Trade Pulse — BASELINE ("typical") query (generated; do not edit by hand)
--- 7-day averages per time-of-day bucket, matching each dashboard window.
--- base_1h: bucket = hour-of-day 0..23 · base_6h: bucket = 6h block 0..3 · base_24h: bucket = 0
--- Trades metrics use per-bucket DISTINCT counts averaged across the 7 days.
+/* ---------------- 2. BASELINE query: one day's per-hour bucket values, accumulated over 7 daily runs ----------------
+   A 7-day account_activity scan times out on Small even single-pass — same
+   data-volume ceiling History hit. Rescoped to the most recently completed
+   day only (the size already proven to fit) and dune-refresh accumulates 7
+   of these daily readings, averaging them itself instead of asking Dune to
+   average 7 days in one execution. Still single-pass: GROUPING SETS gets all
+   three bucket granularities (hour-of-day, 6h block, whole day) from one
+   reference to term_trades / launch_ix. */
+const baselineSql = `-- Solana Trade Pulse — BASELINE query (generated; do not edit by hand)
+-- Most recently completed day's per-bucket values — dune-refresh averages 7
+-- of these daily readings into the "typical" baseline.
+-- day_1h: bucket = hour-of-day 0..23 · day_6h: bucket = 6h block 0..3 · day_24h: bucket = 0
 -- Columns: section, bucket, terminal, traders, tx, vol, created, migrated
-${baseCtes(7, true)}
+${baseCtes(1, true)}
 , keyed AS (
-  SELECT trader_id, tx_id, amount_usd,
-         date_trunc('day', block_time) AS d, hour(block_time) AS h1, hour(block_time) / 6 AS h6
+  SELECT trader_id, tx_id, amount_usd, hour(block_time) AS h1, hour(block_time) / 6 AS h6
   FROM term_trades
 ),
 per_bucket AS (
-  SELECT d, h1, h6,
+  SELECT h1, h6,
          COUNT(DISTINCT trader_id) AS traders, COUNT(DISTINCT tx_id) AS tx, SUM(amount_usd) AS vol
   FROM keyed
-  GROUP BY GROUPING SETS ((d, h1), (d, h6), (d))
+  GROUP BY GROUPING SETS ((h1), (h6), ())
 ),
 lkeyed AS (
-  SELECT kind, date_trunc('day', block_time) AS d, hour(block_time) AS h1, hour(block_time) / 6 AS h6
+  SELECT kind, hour(block_time) AS h1, hour(block_time) / 6 AS h6
   FROM launch_ix
 ),
 l_per_bucket AS (
-  SELECT d, h1, h6,
+  SELECT h1, h6,
          COUNT(CASE WHEN kind = 'created' THEN 1 END) AS created,
          COUNT(CASE WHEN kind = 'migrated' THEN 1 END) AS migrated
   FROM lkeyed
-  GROUP BY GROUPING SETS ((d, h1), (d, h6), (d))
+  GROUP BY GROUPING SETS ((h1), (h6), ())
 )
-SELECT CASE WHEN h1 IS NOT NULL THEN 'base_1h' WHEN h6 IS NOT NULL THEN 'base_6h' ELSE 'base_24h' END AS section,
+SELECT CASE WHEN h1 IS NOT NULL THEN 'day_1h' WHEN h6 IS NOT NULL THEN 'day_6h' ELSE 'day_24h' END AS section,
        CAST(COALESCE(h1, h6, 0) AS varchar) AS bucket, '__total__' AS terminal,
-       AVG(traders) AS traders, AVG(tx) AS tx, AVG(vol) AS vol,
+       traders, tx, vol,
        CAST(NULL AS double) AS created, CAST(NULL AS double) AS migrated
 FROM per_bucket
-GROUP BY h1, h6
 
 UNION ALL
-SELECT CASE WHEN h1 IS NOT NULL THEN 'lbase_1h' WHEN h6 IS NOT NULL THEN 'lbase_6h' ELSE 'lbase_24h' END,
+SELECT CASE WHEN h1 IS NOT NULL THEN 'lday_1h' WHEN h6 IS NOT NULL THEN 'lday_6h' ELSE 'lday_24h' END,
        CAST(COALESCE(h1, h6, 0) AS varchar), '__launch__',
        CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),
-       AVG(created), AVG(migrated)
+       created, migrated
 FROM l_per_bucket
-GROUP BY h1, h6
 `;
 
 mkdirSync(join(root, "queries"), { recursive: true });
