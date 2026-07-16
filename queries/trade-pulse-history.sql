@@ -1,5 +1,6 @@
 -- Solana Trade Pulse — HISTORY query (generated; do not edit by hand)
--- Last 5 complete UTC days of terminal volume. Columns: t (epoch sec), v (USD)
+-- Most recently completed UTC day's terminal volume only — dune-refresh
+-- appends this to a rolling 5-day array. Columns: t (epoch sec), v (USD)
 WITH fee_accounts (terminal, address) AS (
   VALUES
     ('Axiom', '7oi1L8U9MRu5zDz5syFahsiLUric47LzvJBQX6r827ws'),
@@ -55,7 +56,7 @@ fee_txs AS (
   SELECT f.terminal, aa.tx_id
   FROM solana.account_activity aa
   JOIN fee_accounts f ON aa.address = f.address
-  WHERE aa.block_time >= date_trunc('day', now()) - interval '5' day
+  WHERE aa.block_time >= date_trunc('day', now()) - interval '1' day
     AND aa.block_time < date_trunc('day', now())
     AND aa.tx_success = true
     AND aa.balance_change > 0
@@ -63,7 +64,7 @@ fee_txs AS (
   SELECT f.terminal, aa.tx_id
   FROM solana.account_activity aa
   JOIN fee_accounts f ON aa.token_balance_owner = f.address
-  WHERE aa.block_time >= date_trunc('day', now()) - interval '5' day
+  WHERE aa.block_time >= date_trunc('day', now()) - interval '1' day
     AND aa.block_time < date_trunc('day', now())
     AND aa.tx_success = true
     AND aa.token_balance_change > 0
@@ -72,7 +73,7 @@ term_trades AS (
   SELECT ft.terminal, t.tx_id, t.trader_id, t.amount_usd, t.block_time
   FROM dex_solana.trades t
   JOIN fee_txs ft ON t.tx_id = ft.tx_id
-  WHERE t.block_time >= date_trunc('day', now()) - interval '5' day
+  WHERE t.block_time >= date_trunc('day', now()) - interval '1' day
     AND t.block_time < date_trunc('day', now())
 ),
 launch_ix AS (
@@ -81,12 +82,10 @@ launch_ix AS (
               THEN 'created' ELSE 'migrated' END AS kind
   FROM solana.instruction_calls
   WHERE ((executing_account = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P' AND bytearray_substring(data, 1, 8) IN (0x181ec828051c0777, 0x9beae792ec9ea21e)))
-    AND block_time >= date_trunc('day', now()) - interval '5' day
+    AND block_time >= date_trunc('day', now()) - interval '1' day
     AND block_time < date_trunc('day', now())
     AND tx_success = true
 )
-SELECT CAST(to_unixtime(date_trunc('day', block_time)) AS bigint) AS t,
+SELECT CAST(to_unixtime(date_trunc('day', now()) - interval '1' day) AS bigint) AS t,
        SUM(amount_usd) AS v
 FROM term_trades
-GROUP BY date_trunc('day', block_time)
-ORDER BY t

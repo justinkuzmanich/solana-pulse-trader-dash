@@ -115,15 +115,21 @@ WHERE block_time >= now() - interval '1' hour * w.hrs
 GROUP BY w.win
 `;
 
-/* ---------------- 2. HISTORY query: last 5 complete days, daily ---------------- */
+/* ---------------- 2. HISTORY query: yesterday only, accumulated over 5 daily runs ----------------
+   A single query scanning 5 days of account_activity times out on the
+   Free-tier Small engine even as one pass (confirmed live — this is a data
+   -volume ceiling, not a query-shape problem like main/baseline had). Scoped
+   to exactly the most recently completed UTC day instead — the size that's
+   already proven to fit — and dune-refresh appends each day's result to a
+   rolling 5-day array in the cache, so the 5-day history bootstraps over the
+   first 5 daily runs instead of one query. */
 const historySql = `-- Solana Trade Pulse — HISTORY query (generated; do not edit by hand)
--- Last 5 complete UTC days of terminal volume. Columns: t (epoch sec), v (USD)
-${baseCtes(5, true)}
-SELECT CAST(to_unixtime(date_trunc('day', block_time)) AS bigint) AS t,
+-- Most recently completed UTC day's terminal volume only — dune-refresh
+-- appends this to a rolling 5-day array. Columns: t (epoch sec), v (USD)
+${baseCtes(1, true)}
+SELECT CAST(to_unixtime(date_trunc('day', now()) - interval '1' day) AS bigint) AS t,
        SUM(amount_usd) AS v
 FROM term_trades
-GROUP BY date_trunc('day', block_time)
-ORDER BY t
 `;
 
 /* ---------------- 3. BASELINE query: 7 complete days, daily until local history accumulates ----------------

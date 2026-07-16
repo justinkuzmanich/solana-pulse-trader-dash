@@ -115,12 +115,18 @@ export const config = { schedule: "*/5 * * * *" };
 async function processJob(job: Job, rows: Record<string, any>[], state: any) {
   if (job === "main") return processMain(rows);
   if (job === "history") {
-    const days = rows
-      .filter((r) => r.t != null && r.v != null)
-      .map((r) => ({ t: Number(r.t) * 1000, v: Number(r.v) }))
-      .sort((a, b) => a.t - b.t)
-      .slice(-5);
-    await setJSON("history", { days, updatedAt: new Date().toISOString() });
+    // Query now returns exactly one (yesterday's) row — append to the
+    // rolling array rather than replace, so 5-day history bootstraps over
+    // the first 5 daily runs (see gen-dune-sql.mjs for why it's 1-day scoped).
+    const row = rows.find((r) => r.t != null && r.v != null);
+    if (row) {
+      const existing: any = (await getJSON("history")) ?? { days: [] };
+      const day = { t: Number(row.t) * 1000, v: Number(row.v) };
+      const days = [...existing.days.filter((d: any) => d.t !== day.t), day]
+        .sort((a: any, b: any) => a.t - b.t)
+        .slice(-5);
+      await setJSON("history", { days, updatedAt: new Date().toISOString() });
+    }
     return;
   }
   // baseline

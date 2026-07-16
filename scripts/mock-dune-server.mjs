@@ -36,10 +36,9 @@ function mainRows() {
 }
 
 function historyRows() {
-  const rows = [];
+  // Real query now returns exactly one (yesterday's) row — mock matches.
   const day0 = Math.floor(Date.now() / 86400000) * 86400; // today 00:00 UTC, sec
-  for (let d = 5; d >= 1; d--) rows.push({ t: day0 - d * 86400, v: DAY.vol * jitter() });
-  return rows;
+  return [{ t: day0 - 86400, v: DAY.vol * jitter() }];
 }
 
 function baselineRows() {
