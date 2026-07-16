@@ -99,6 +99,11 @@ export default async () => {
   }
 
   await setJSON("state", state);
+  // console.log (not just the response body) — nobody reads a scheduled
+  // function's HTTP response, so this is the only way to see progress in
+  // the Netlify function logs.
+  console.log(`[dune-refresh] ${log.length ? log.join(" | ") : "nothing due this tick"} — credits ${state.creditsUsed}/${budget} (${state.month})`);
+  if (state.lastError) console.log(`[dune-refresh] lastError:`, JSON.stringify(state.lastError));
   return json({ log, creditsUsed: state.creditsUsed, month: state.month });
 };
 
