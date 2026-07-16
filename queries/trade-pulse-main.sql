@@ -81,21 +81,44 @@ launch_ix AS (
     AND block_time >= now() - interval '24' hour
     AND tx_success = true
 )
-SELECT 'window' AS section, w.win AS bucket, COALESCE(tt.terminal, '__total__') AS terminal,
-       COUNT(DISTINCT tt.trader_id) AS traders, COUNT(DISTINCT tt.tx_id) AS tx, SUM(tt.amount_usd) AS vol,
+, win_defs (win, hrs) AS (VALUES ('1h', 1), ('6h', 6), ('24h', 24))
+, term_agg AS (
+  SELECT w.win AS win, COALESCE(tt.terminal, '__total__') AS terminal,
+         COUNT(DISTINCT tt.trader_id) AS traders, COUNT(DISTINCT tt.tx_id) AS tx, SUM(tt.amount_usd) AS vol,
+         MAX(tt.block_time) AS max_bt
+  FROM term_trades tt
+  CROSS JOIN win_defs w
+  WHERE tt.block_time >= now() - interval '1' hour * w.hrs
+  GROUP BY GROUPING SETS ((w.win, tt.terminal), (w.win))
+)
+, launch_agg AS (
+  SELECT w.win AS win,
+         COUNT(CASE WHEN kind = 'created' THEN 1 END) AS created,
+         COUNT(CASE WHEN kind = 'migrated' THEN 1 END) AS migrated
+  FROM launch_ix
+  CROSS JOIN win_defs w
+  WHERE block_time >= now() - interval '1' hour * w.hrs
+  GROUP BY w.win
+)
+SELECT 'window' AS section, wd.win AS bucket, '__total__' AS terminal,
+       COALESCE(ta.traders, 0) AS traders, COALESCE(ta.tx, 0) AS tx, COALESCE(ta.vol, 0) AS vol,
        CAST(NULL AS bigint) AS created, CAST(NULL AS bigint) AS migrated,
-       to_unixtime(MAX(tt.block_time)) AS max_bt
-FROM term_trades tt
-CROSS JOIN (VALUES ('1h', 1), ('6h', 6), ('24h', 24)) AS w(win, hrs)
-WHERE tt.block_time >= now() - interval '1' hour * w.hrs
-GROUP BY GROUPING SETS ((w.win, tt.terminal), (w.win))
+       to_unixtime(ta.max_bt) AS max_bt
+FROM win_defs wd
+LEFT JOIN term_agg ta ON ta.win = wd.win AND ta.terminal = '__total__'
 
 UNION ALL
-SELECT 'window', w.win, '__launch__',
-       CAST(NULL AS bigint), CAST(NULL AS bigint), CAST(NULL AS double),
-       COUNT(CASE WHEN kind = 'created' THEN 1 END), COUNT(CASE WHEN kind = 'migrated' THEN 1 END),
+SELECT 'window', ta.win, ta.terminal,
+       ta.traders, ta.tx, ta.vol,
+       CAST(NULL AS bigint), CAST(NULL AS bigint),
        CAST(NULL AS double)
-FROM launch_ix
-CROSS JOIN (VALUES ('1h', 1), ('6h', 6), ('24h', 24)) AS w(win, hrs)
-WHERE block_time >= now() - interval '1' hour * w.hrs
-GROUP BY w.win
+FROM term_agg ta
+WHERE ta.terminal != '__total__'
+
+UNION ALL
+SELECT 'window', wd.win, '__launch__',
+       CAST(NULL AS bigint), CAST(NULL AS bigint), CAST(NULL AS double),
+       COALESCE(la.created, 0), COALESCE(la.migrated, 0),
+       CAST(NULL AS double)
+FROM win_defs wd
+LEFT JOIN launch_agg la ON la.win = wd.win

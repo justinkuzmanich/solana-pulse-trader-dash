@@ -91,28 +91,59 @@ function timeFilter(col, lookbackHoursOrDays, complete) {
    from scratch. (Free-tier Small engine has a hard 2-minute cap; there is no
    Medium/Large on Free, so this query must stay a single pass over each.)
    asOf is folded in as an extra column (max_bt) instead of a separate branch
-   that would trigger a third term_trades derivation. */
+   that would trigger a third term_trades derivation.
+
+   win_defs + a LEFT JOIN at the very end guarantees a __total__/__launch__
+   row for every window even when zero rows qualify (e.g. Dune's Solana
+   ingestion lagging past the 1h cutoff at query time) — without it, a
+   CROSS JOIN + WHERE that filters out every row for a window produces NO
+   row for that group at all, which the app then silently defaults to 0,
+   indistinguishable from a real measured zero. The LEFT JOIN is cheap (3
+   literal rows), so this doesn't reintroduce a second term_trades scan. */
 const mainSql = `-- Solana Trade Pulse — MAIN stats query (generated from config/terminals.json; do not edit by hand)
 -- Result columns: section, bucket, terminal, traders, tx, vol, created, migrated, max_bt
 ${baseCtes(24)}
-SELECT 'window' AS section, w.win AS bucket, COALESCE(tt.terminal, '__total__') AS terminal,
-       COUNT(DISTINCT tt.trader_id) AS traders, COUNT(DISTINCT tt.tx_id) AS tx, SUM(tt.amount_usd) AS vol,
+, win_defs (win, hrs) AS (VALUES ('1h', 1), ('6h', 6), ('24h', 24))
+, term_agg AS (
+  SELECT w.win AS win, COALESCE(tt.terminal, '__total__') AS terminal,
+         COUNT(DISTINCT tt.trader_id) AS traders, COUNT(DISTINCT tt.tx_id) AS tx, SUM(tt.amount_usd) AS vol,
+         MAX(tt.block_time) AS max_bt
+  FROM term_trades tt
+  CROSS JOIN win_defs w
+  WHERE tt.block_time >= now() - interval '1' hour * w.hrs
+  GROUP BY GROUPING SETS ((w.win, tt.terminal), (w.win))
+)
+, launch_agg AS (
+  SELECT w.win AS win,
+         COUNT(CASE WHEN kind = 'created' THEN 1 END) AS created,
+         COUNT(CASE WHEN kind = 'migrated' THEN 1 END) AS migrated
+  FROM launch_ix
+  CROSS JOIN win_defs w
+  WHERE block_time >= now() - interval '1' hour * w.hrs
+  GROUP BY w.win
+)
+SELECT 'window' AS section, wd.win AS bucket, '__total__' AS terminal,
+       COALESCE(ta.traders, 0) AS traders, COALESCE(ta.tx, 0) AS tx, COALESCE(ta.vol, 0) AS vol,
        CAST(NULL AS bigint) AS created, CAST(NULL AS bigint) AS migrated,
-       to_unixtime(MAX(tt.block_time)) AS max_bt
-FROM term_trades tt
-CROSS JOIN (VALUES ('1h', 1), ('6h', 6), ('24h', 24)) AS w(win, hrs)
-WHERE tt.block_time >= now() - interval '1' hour * w.hrs
-GROUP BY GROUPING SETS ((w.win, tt.terminal), (w.win))
+       to_unixtime(ta.max_bt) AS max_bt
+FROM win_defs wd
+LEFT JOIN term_agg ta ON ta.win = wd.win AND ta.terminal = '__total__'
 
 UNION ALL
-SELECT 'window', w.win, '__launch__',
-       CAST(NULL AS bigint), CAST(NULL AS bigint), CAST(NULL AS double),
-       COUNT(CASE WHEN kind = 'created' THEN 1 END), COUNT(CASE WHEN kind = 'migrated' THEN 1 END),
+SELECT 'window', ta.win, ta.terminal,
+       ta.traders, ta.tx, ta.vol,
+       CAST(NULL AS bigint), CAST(NULL AS bigint),
        CAST(NULL AS double)
-FROM launch_ix
-CROSS JOIN (VALUES ('1h', 1), ('6h', 6), ('24h', 24)) AS w(win, hrs)
-WHERE block_time >= now() - interval '1' hour * w.hrs
-GROUP BY w.win
+FROM term_agg ta
+WHERE ta.terminal != '__total__'
+
+UNION ALL
+SELECT 'window', wd.win, '__launch__',
+       CAST(NULL AS bigint), CAST(NULL AS bigint), CAST(NULL AS double),
+       COALESCE(la.created, 0), COALESCE(la.migrated, 0),
+       CAST(NULL AS double)
+FROM win_defs wd
+LEFT JOIN launch_agg la ON la.win = wd.win
 `;
 
 /* ---------------- 2. BASELINE query: one day's per-hour bucket values, accumulated over 7 daily runs ----------------
