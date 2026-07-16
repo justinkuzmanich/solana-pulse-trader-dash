@@ -3,22 +3,21 @@
 // credit budget. Two-phase (trigger on one tick, collect on a later tick) so a
 // slow Small-engine query never hits the function timeout.
 //
-// Env: DUNE_API_KEY, DUNE_QUERY_MAIN, DUNE_QUERY_HISTORY, DUNE_QUERY_BASELINE
+// Env: DUNE_API_KEY, DUNE_QUERY_MAIN, DUNE_QUERY_BASELINE
 // Tuning: REFRESH_MINUTES (default 120), DUNE_MONTHLY_CREDIT_BUDGET (default 2300)
 import { executeQuery, executionStatus, executionRows, TERMINAL_STATES } from "../lib/dune";
 import { getJSON, setJSON } from "../lib/store";
 import { TERMINAL_NAMES } from "../lib/registry";
 
-type Job = "main" | "history" | "baseline";
-const JOBS: Job[] = ["main", "history", "baseline"];
+type Job = "main" | "baseline";
+const JOBS: Job[] = ["main", "baseline"];
 // conservative per-run credit estimates, used only as a fallback until the API
-// reports an actual (main/baseline scan solana.account_activity on Medium
-// engine — real cost confirmed once the first live execution completes)
-const EST_CREDITS: Record<Job, number> = { main: 20, history: 15, baseline: 35 };
+// reports an actual (main/baseline scan solana.account_activity on Small
+// engine, single-pass — real cost confirmed once the first live execution completes)
+const EST_CREDITS: Record<Job, number> = { main: 20, baseline: 35 };
 
 const QUERY_ENV: Record<Job, string> = {
   main: "DUNE_QUERY_MAIN",
-  history: "DUNE_QUERY_HISTORY",
   baseline: "DUNE_QUERY_BASELINE",
 };
 
@@ -77,7 +76,6 @@ export default async () => {
 
   const due: Array<[Job, number, boolean]> = [
     ["main", cadenceMin, true],
-    ["history", dayMin, true],
     // baseline only needed until local snapshots cover 7 days
     ["baseline", dayMin, coverageDays < 7.5],
   ];
@@ -114,21 +112,6 @@ export const config = { schedule: "*/5 * * * *" };
 
 async function processJob(job: Job, rows: Record<string, any>[], state: any) {
   if (job === "main") return processMain(rows);
-  if (job === "history") {
-    // Query now returns exactly one (yesterday's) row — append to the
-    // rolling array rather than replace, so 5-day history bootstraps over
-    // the first 5 daily runs (see gen-dune-sql.mjs for why it's 1-day scoped).
-    const row = rows.find((r) => r.t != null && r.v != null);
-    if (row) {
-      const existing: any = (await getJSON("history")) ?? { days: [] };
-      const day = { t: Number(row.t) * 1000, v: Number(row.v) };
-      const days = [...existing.days.filter((d: any) => d.t !== day.t), day]
-        .sort((a: any, b: any) => a.t - b.t)
-        .slice(-5);
-      await setJSON("history", { days, updatedAt: new Date().toISOString() });
-    }
-    return;
-  }
   // baseline
   const base: any = {};
   const lbase: any = {};

@@ -22,12 +22,11 @@ async function dune(path: string, init?: RequestInit): Promise<any> {
 
 export async function executeQuery(
   queryId: string,
-  performance: "medium" | "large" = "medium"
+  performance: "small" | "medium" | "large" = "small"
 ): Promise<{ execution_id: string }> {
-  // Small (the API default) has a hard 2-minute timeout — too short for a scan
-  // over solana.account_activity. Medium is still Free-tier eligible and has
-  // an extended timeout; costs more credits per run but this only executes on
-  // the refresh cadence, not per page load.
+  // Small is the only engine available on the Free plan (confirmed live —
+  // Medium/Large require a paid plan) with a hard 2-minute timeout. Every
+  // saved query is written to fit that: single reference per expensive CTE.
   return dune(`/query/${queryId}/execute`, {
     method: "POST",
     body: JSON.stringify({ performance }),

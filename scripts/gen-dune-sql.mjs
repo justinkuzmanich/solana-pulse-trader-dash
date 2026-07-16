@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Generates the three Dune SQL queries in /queries from config/terminals.json.
+ * Generates the two Dune SQL queries in /queries from config/terminals.json.
  * Run `npm run gen:sql` after any registry change, then paste the regenerated
  * SQL into the corresponding saved Dune queries (IDs live in env vars
- * DUNE_QUERY_MAIN / DUNE_QUERY_HISTORY / DUNE_QUERY_BASELINE).
+ * DUNE_QUERY_MAIN / DUNE_QUERY_BASELINE).
  *
  * Attribution method (mirrors Dune spellbook bot_trades / phantom_swapper):
  * a terminal trade = a tx in dex_solana.trades whose account_activity shows a
@@ -115,24 +115,7 @@ WHERE block_time >= now() - interval '1' hour * w.hrs
 GROUP BY w.win
 `;
 
-/* ---------------- 2. HISTORY query: yesterday only, accumulated over 5 daily runs ----------------
-   A single query scanning 5 days of account_activity times out on the
-   Free-tier Small engine even as one pass (confirmed live — this is a data
-   -volume ceiling, not a query-shape problem like main/baseline had). Scoped
-   to exactly the most recently completed UTC day instead — the size that's
-   already proven to fit — and dune-refresh appends each day's result to a
-   rolling 5-day array in the cache, so the 5-day history bootstraps over the
-   first 5 daily runs instead of one query. */
-const historySql = `-- Solana Trade Pulse — HISTORY query (generated; do not edit by hand)
--- Most recently completed UTC day's terminal volume only — dune-refresh
--- appends this to a rolling 5-day array. Columns: t (epoch sec), v (USD)
-${baseCtes(1, true)}
-SELECT CAST(to_unixtime(date_trunc('day', now()) - interval '1' day) AS bigint) AS t,
-       SUM(amount_usd) AS v
-FROM term_trades
-`;
-
-/* ---------------- 3. BASELINE query: 7 complete days, daily until local history accumulates ----------------
+/* ---------------- 2. BASELINE query: 7 complete days, daily until local history accumulates ----------------
    Same single-reference-per-CTE principle as the main query. GROUPING SETS
    computes the 1h/6h/24h bucket granularities in one pass over term_trades
    (and one pass over launch_ix) instead of three separate re-derivations —
@@ -185,9 +168,8 @@ GROUP BY h1, h6
 
 mkdirSync(join(root, "queries"), { recursive: true });
 writeFileSync(join(root, "queries/trade-pulse-main.sql"), mainSql);
-writeFileSync(join(root, "queries/trade-pulse-history.sql"), historySql);
 writeFileSync(join(root, "queries/trade-pulse-baseline.sql"), baselineSql);
-console.log("Wrote queries/trade-pulse-{main,history,baseline}.sql");
+console.log("Wrote queries/trade-pulse-{main,baseline}.sql");
 console.log(
   `Registry: ${registry.terminals.length} terminals, ` +
     `${registry.terminals.reduce((n, t) => n + t.feeAccounts.length, 0)} active + ` +

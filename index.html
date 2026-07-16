@@ -73,7 +73,7 @@
   .launch{grid-template-columns:1fr 1fr}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
   .card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:8px}
-  .card-head .k, .history .head .k{font-size:12px;color:var(--text);font-weight:700;letter-spacing:.12em}
+  .card-head .k{font-size:12px;color:var(--text);font-weight:700;letter-spacing:.12em}
   .hero-num{font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:600;margin:10px 0 4px;white-space:nowrap}
   .hero-num small{font-size:13px;color:var(--muted);font-weight:400}
   .vs{font-size:12px;margin-bottom:4px}
@@ -109,16 +109,13 @@
     .topstats{display:none}
   }
 
-  /* ---------- pulse + history ---------- */
+  /* ---------- pulse ---------- */
   .pulse-card{margin-top:14px;position:relative;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--panel-2)}
   #pulse{display:block;width:100%;height:215px}
   .pulse-meta{position:absolute;top:12px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:center;pointer-events:none}
   .pulse-meta .k{color:var(--text);font-weight:700;font-size:12px;letter-spacing:.14em;display:flex;align-items:center;gap:9px}
   .pulse-meta .k::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);animation:blink 2.2s ease-in-out infinite}
   .pulse-meta .mono{color:var(--text);font-weight:600}
-  .history{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 10px}
-  .history .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
-  #histChart{display:block;width:100%;height:180px}
 
   /* ---------- how to read ---------- */
   .legend{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
@@ -249,13 +246,6 @@
     <p class="caption" style="margin-top:10px">Which apps trading is flowing through. A single terminal spiking often means one hot token is being sniped there.</p>
   </section>
 
-  <!-- ============ 5. THE WEEK IN CONTEXT ============ -->
-  <section class="history">
-    <div class="head"><span class="k">Terminal volume — last 5 days</span><span class="k mono" id="histTotal"></span></div>
-    <canvas id="histChart"></canvas>
-    <p class="caption" style="padding:6px 2px 8px">Today vs the last few days. Rising bars = momentum building; a fading week means the crowd is leaving.</p>
-  </section>
-
   <!-- ============ 6. HOW TO READ THIS ============ -->
   <section class="legend">
     <h2>How to read this dashboard</h2>
@@ -269,7 +259,7 @@
   </section>
 
   <footer>
-    Traders & terminal volume via Dune (fee-wallet registry, cached server-side — see the Updated time for data age) · live heartbeat via Solana RPC · history via cached daily Dune query · SOL price via CoinGecko. Amber badge means simulated demo data; the 5-minute window arrives with the live webhook pipeline (Phase 2).
+    Traders & terminal volume via Dune (fee-wallet registry, cached server-side — see the Updated time for data age) · live heartbeat via Solana RPC · SOL price via CoinGecko. Amber badge means simulated demo data; the 5-minute window arrives with the live webhook pipeline (Phase 2).
   </footer>
 </div>
 
@@ -290,7 +280,7 @@ const CONFIG = {
   windows: ["5m","1h","6h","24h"]
 };
 let MODE = "demo";                       // "demo" | "live"
-const LIVE = { windows:{}, history:null, historyT:null, asOf:null };
+const LIVE = { windows:{}, asOf:null };
 
 const fetchJSON = async u => {
   const r = await fetch(u);
@@ -329,7 +319,6 @@ async function loadLive(){
   try{
     const res = await Promise.all(CONFIG.windows.map(k =>
       fetchJSON(`${CONFIG.api}/market-stats?window=${k}`).catch(()=>null)));
-    const hist = await fetchJSON(`${CONFIG.api}/history`).catch(()=>null);
     const got = {}; let any = false, asOf = null;
     CONFIG.windows.forEach((k,i)=>{
       const p = res[i];
@@ -339,13 +328,9 @@ async function loadLive(){
     if(!any) throw new Error("no live windows");
     LIVE.windows = got;
     LIVE.asOf = asOf;
-    if(hist && hist.days && hist.days.length){
-      LIVE.history  = hist.days.map(d=>d.v);
-      LIVE.historyT = hist.days.map(d=>d.t);
-    } else { LIVE.history = null; LIVE.historyT = null; }
     MODE = "live";
   }catch(e){ /* keep last good state; fresh page stays demo */ }
-  setBadge(); buildWindowGrids(); applyWindow(curWin); renderHistory();
+  setBadge(); buildWindowGrids(); applyWindow(curWin);
 }
 
 async function pollSol(){
@@ -382,8 +367,6 @@ const TERMINALS = [
   {name:"Trojan",  color:"#FF5470", share:{ "5m":0.09,"1h":0.10,"6h":0.11,"24h":0.11 }},
   {name:"Phantom", color:"#B39DFF", share:{ "5m":0.07,"1h":0.07,"6h":0.07,"24h":0.07 }}
 ];
-
-const history = [2.61e9, 2.88e9, 2.55e9, 3.19e9, 3.42e9];
 
 /* ================= GAUGE ================= */
 function zone(h){ return HEAT_ZONES.find(z=>h<z.max); }
@@ -712,53 +695,16 @@ function tickPulse(){
   if(reduced) $("pulseRate").textContent=Math.round(samples[samples.length-1]||0).toLocaleString()+" tx/s";
 }
 
-/* ================= HISTORY ================= */
-function renderHistory(){
-  const c=$("histChart"), ctx=c.getContext("2d");
-  const r=sizeCanvas(c), W=r.width, H=r.height, pad={l:8,r:8,t:16,b:26};
-  ctx.clearRect(0,0,W,H);
-  const live = MODE==="live";
-  const data = live ? LIVE.history : history;
-  const times = live ? LIVE.historyT : null;
-  if(!data || !data.length){
-    ctx.fillStyle="#66708A"; ctx.font="12px 'IBM Plex Mono',monospace"; ctx.textAlign="center";
-    ctx.fillText("history not cached yet — first daily refresh pending", W/2, H/2);
-    $("histTotal").textContent="";
-    return;
-  }
-  const max=Math.max(...data), n=data.length, gap=26;
-  const bw=(W-pad.l-pad.r-gap*(n-1))/n;
-  const now=Date.now();
-  data.forEach((v,i)=>{
-    const h=(v/max)*(H-pad.t-pad.b), x=pad.l+i*(bw+gap), y=H-pad.b-h;
-    const g=ctx.createLinearGradient(0,y,0,H-pad.b);
-    g.addColorStop(0, i===n-1?"rgba(20,241,149,.95)":"rgba(20,241,149,.55)");
-    g.addColorStop(1,"rgba(153,69,255,.5)");
-    ctx.fillStyle=g;
-    ctx.beginPath(); ctx.roundRect(x,y,bw,h,6); ctx.fill();
-    ctx.fillStyle="#E9EDF6"; ctx.font="600 12px 'IBM Plex Mono',monospace"; ctx.textAlign="center";
-    ctx.fillText(fmtUSD(v), x+bw/2, y-6);
-    ctx.fillStyle="#66708A"; ctx.font="10px 'IBM Plex Mono',monospace";
-    // live bars carry real day timestamps (complete UTC days); demo counts back from today
-    const lbl = times
-      ? new Date(times[i]).toLocaleDateString("en-US",{weekday:"short", timeZone:"UTC"})
-      : (i===n-1 ? "Today" : new Date(now-(n-1-i)*864e5).toLocaleDateString("en-US",{weekday:"short"}));
-    ctx.fillText(lbl, x+bw/2, H-8);
-  });
-  $("histTotal").textContent="5d total "+fmtUSD(data.reduce((a,b)=>a+b,0));
-}
-
 /* ================= BOOT ================= */
 buildWindowGrids();
 applyWindow(curWin);
-renderHistory();
 setBadge();
 drawPulse(); tickPulse(); setInterval(tickPulse, 1200);
 $("solPrice").textContent="—";           // never show a made-up price
 loadLive(); setInterval(loadLive, CONFIG.refreshMs);
 initHeartbeat();
 pollSol();
-addEventListener("resize", ()=>{ buildWindowGrids(); applyWindow(curWin); renderHistory(); });
+addEventListener("resize", ()=>{ buildWindowGrids(); applyWindow(curWin); });
 </script>
 </body>
 </html>

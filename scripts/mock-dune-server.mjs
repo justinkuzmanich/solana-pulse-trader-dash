@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * LOCAL TEST ONLY — a mock of the three Dune API endpoints dune-refresh uses,
+ * LOCAL TEST ONLY — a mock of the Dune API endpoints dune-refresh uses,
  * serving synthetic rows shaped exactly like the generated SQL in /queries.
  * Lets `netlify dev` exercise the full pipeline (refresh → Blobs → endpoints)
  * in sandboxes where api.dune.com is unreachable. Values are fake by design;
  * never point production at this (remove DUNE_API_BASE from env).
  *
  *   node scripts/mock-dune-server.mjs   # listens on :9999
- *   query IDs: 101 = main, 102 = history, 103 = baseline
+ *   query IDs: 101 = main, 103 = baseline
  */
 import { createServer } from "node:http";
 
@@ -35,12 +35,6 @@ function mainRows() {
   return rows;
 }
 
-function historyRows() {
-  // Real query now returns exactly one (yesterday's) row — mock matches.
-  const day0 = Math.floor(Date.now() / 86400000) * 86400; // today 00:00 UTC, sec
-  return [{ t: day0 - 86400, v: DAY.vol * jitter() }];
-}
-
 function baselineRows() {
   const rows = [];
   for (let h = 0; h < 24; h++) {
@@ -64,7 +58,7 @@ const row = (section, bucket, terminal, traders = null, tx = null, vol = null) =
   vol, created: null, migrated: null,
 });
 
-const GEN = { 101: mainRows, 102: historyRows, 103: baselineRows };
+const GEN = { 101: mainRows, 103: baselineRows };
 
 createServer((req, res) => {
   const url = new URL(req.url, "http://x");
@@ -85,4 +79,4 @@ createServer((req, res) => {
     return send({ result: { rows: rows.slice(offset, offset + limit) } });
   }
   res.statusCode = 404; send({ error: "not found" });
-}).listen(9999, () => console.log("mock Dune API on :9999 (queries 101/102/103)"));
+}).listen(9999, () => console.log("mock Dune API on :9999 (queries 101/103)"));
