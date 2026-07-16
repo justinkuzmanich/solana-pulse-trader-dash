@@ -118,14 +118,27 @@ GROUP BY w.win
 /* ---------------- 2. BASELINE query: one day's per-hour bucket values, accumulated over 7 daily runs ----------------
    A 7-day account_activity scan times out on Small even single-pass — same
    data-volume ceiling History hit. Rescoped to the most recently completed
-   day only (the size already proven to fit) and dune-refresh accumulates 7
-   of these daily readings, averaging them itself instead of asking Dune to
-   average 7 days in one execution. Still single-pass: GROUPING SETS gets all
-   three bucket granularities (hour-of-day, 6h block, whole day) from one
-   reference to term_trades / launch_ix. */
+   day only (the size already proven to fit — Main scans the same order of
+   magnitude and succeeds). Still single-pass: GROUPING SETS gets all three
+   bucket granularities (hour-of-day, 6h block, whole day) from one reference
+   to term_trades / launch_ix, and dune-refresh accumulates 7 of these daily
+   readings, averaging them itself instead of asking Dune to average 7 days
+   in one execution.
+   Even at 1-day scope this still timed out — the culprit is COUNT(DISTINCT)
+   combined with GROUPING SETS, a known-expensive pattern in Trino-family
+   engines (computing exact per-group distinct counts across multiple
+   grouping levels needs a separate dedup pass per level). Switched to
+   approx_distinct (HyperLogLog), which Trino specifically optimizes for
+   this exact multi-grouping-set shape — one sketch, merged per level.
+   Trade-off accepted only here: these are "typical" reference values, not
+   the live headline numbers (Main keeps exact COUNT(DISTINCT)), so a small
+   (~2%) approximation error doesn't affect the honesty of any number the
+   user reads as "right now." */
 const baselineSql = `-- Solana Trade Pulse — BASELINE query (generated; do not edit by hand)
 -- Most recently completed day's per-bucket values — dune-refresh averages 7
--- of these daily readings into the "typical" baseline.
+-- of these daily readings into the "typical" baseline. traders/tx are
+-- approximate (approx_distinct) — reference values only, not live headline
+-- numbers, traded for fitting the Free-tier Small engine's time limit.
 -- day_1h: bucket = hour-of-day 0..23 · day_6h: bucket = 6h block 0..3 · day_24h: bucket = 0
 -- Columns: section, bucket, terminal, traders, tx, vol, created, migrated
 ${baseCtes(1, true)}
@@ -135,7 +148,7 @@ ${baseCtes(1, true)}
 ),
 per_bucket AS (
   SELECT h1, h6,
-         COUNT(DISTINCT trader_id) AS traders, COUNT(DISTINCT tx_id) AS tx, SUM(amount_usd) AS vol
+         approx_distinct(trader_id) AS traders, approx_distinct(tx_id) AS tx, SUM(amount_usd) AS vol
   FROM keyed
   GROUP BY GROUPING SETS ((h1), (h6), ())
 ),

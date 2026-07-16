@@ -1,6 +1,8 @@
 -- Solana Trade Pulse — BASELINE query (generated; do not edit by hand)
 -- Most recently completed day's per-bucket values — dune-refresh averages 7
--- of these daily readings into the "typical" baseline.
+-- of these daily readings into the "typical" baseline. traders/tx are
+-- approximate (approx_distinct) — reference values only, not live headline
+-- numbers, traded for fitting the Free-tier Small engine's time limit.
 -- day_1h: bucket = hour-of-day 0..23 · day_6h: bucket = 6h block 0..3 · day_24h: bucket = 0
 -- Columns: section, bucket, terminal, traders, tx, vol, created, migrated
 WITH fee_accounts (terminal, address) AS (
@@ -94,7 +96,7 @@ launch_ix AS (
 ),
 per_bucket AS (
   SELECT h1, h6,
-         COUNT(DISTINCT trader_id) AS traders, COUNT(DISTINCT tx_id) AS tx, SUM(amount_usd) AS vol
+         approx_distinct(trader_id) AS traders, approx_distinct(tx_id) AS tx, SUM(amount_usd) AS vol
   FROM keyed
   GROUP BY GROUPING SETS ((h1), (h6), ())
 ),
