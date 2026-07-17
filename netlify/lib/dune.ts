@@ -38,6 +38,11 @@ export type DuneStatus = {
   execution_id: string;
   // present on newer API responses; used for the credit ledger when available
   execution_cost_credits?: number;
+  // Dune's actual field names for failure detail are undocumented from here
+  // (no network access to verify) — kept as unknown/any so dune-refresh can
+  // log whatever comes back rather than silently dropping it.
+  error?: unknown;
+  [key: string]: unknown;
 };
 
 export async function executionStatus(executionId: string): Promise<DuneStatus> {

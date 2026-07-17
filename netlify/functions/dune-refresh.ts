@@ -50,7 +50,18 @@ export default async () => {
         log.push(`${job}: collected ${rows.length} rows`);
       } else if (TERMINAL_STATES.has(st.state)) {
         state.creditsUsed += st.execution_cost_credits ?? 0;
-        state.lastError = { job, state: st.state, at: new Date().toISOString() };
+        // Log the full status payload (not just the state name) — the actual
+        // field name Dune uses for failure detail is unconfirmed from here
+        // (no network access to their docs), so capture everything.
+        let resultsError: string | null = null;
+        if (st.state !== "QUERY_STATE_COMPLETED") {
+          try {
+            await executionRows(p.executionId);
+          } catch (re: any) {
+            resultsError = re.message; // dune()'s thrown Error includes the raw response body
+          }
+        }
+        state.lastError = { job, state: st.state, at: new Date().toISOString(), statusPayload: st, resultsError };
         delete state.pending[job];
         log.push(`${job}: execution ended ${st.state}`);
       } else if (Date.now() - p.startedAt > 20 * 60_000) {
