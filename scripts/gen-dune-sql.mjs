@@ -94,56 +94,32 @@ function timeFilter(col, lookbackHoursOrDays, complete) {
    that would trigger a third term_trades derivation.
 
    win_defs + a LEFT JOIN at the very end guarantees a __total__/__launch__
-   row for every window even when zero rows qualify — without it, a CROSS
-   JOIN + WHERE that filters out every row for a window produces NO row for
-   that group at all, which the app then silently defaults to 0,
+   row for every window even when zero rows qualify (e.g. Dune's Solana
+   ingestion lagging past the 1h cutoff at query time) — without it, a
+   CROSS JOIN + WHERE that filters out every row for a window produces NO
+   row for that group at all, which the app then silently defaults to 0,
    indistinguishable from a real measured zero. The LEFT JOIN is cheap (3
-   literal rows), so this doesn't reintroduce a second term_trades scan.
-
-   Windows anchor to the latest actually-ingested trade (via a MAX(...)
-   OVER() window function on each side, computed in the same pass — not a
-   second scan) instead of wall-clock now(). Confirmed live: Dune's
-   community-decoded Solana tables can lag hours behind real time, and a
-   wall-clock-anchored "1h"/"6h" window goes to zero (correctly, but
-   uselessly) whenever the lag exceeds the window size. Anchoring to the
-   real data means "1h" always means "the most recent hour Dune actually
-   has," which is what the page's "Updated" timestamp already discloses —
-   nothing is hidden, windows just stop going spuriously empty. This is why
-   the outer fetch below is 30h, not 24h: a 24h window ending at an anchor
-   that's already hours stale reaches further back than a 24h-from-now scan
-   would capture. Trades and launches anchor independently (each table may
-   have a different lag), 30h is a judgment-call buffer sized to the ~6h lag
-   observed 2026-07-16 — revisit if actual lag ever approaches it. */
+   literal rows), so this doesn't reintroduce a second term_trades scan. */
 const mainSql = `-- Solana Trade Pulse — MAIN stats query (generated from config/terminals.json; do not edit by hand)
 -- Result columns: section, bucket, terminal, traders, tx, vol, created, migrated, max_bt
-${baseCtes(30)}
+${baseCtes(24)}
 , win_defs (win, hrs) AS (VALUES ('1h', 1), ('6h', 6), ('24h', 24))
-, anchored AS (
-  SELECT *, MAX(block_time) OVER () AS anchor_bt
-  FROM term_trades
-)
 , term_agg AS (
-  SELECT w.win AS win, COALESCE(a.terminal, '__total__') AS terminal,
-         COUNT(DISTINCT a.trader_id) AS traders, COUNT(DISTINCT a.tx_id) AS tx, SUM(a.amount_usd) AS vol,
-         MAX(a.block_time) AS max_bt
-  FROM anchored a
+  SELECT w.win AS win, COALESCE(tt.terminal, '__total__') AS terminal,
+         COUNT(DISTINCT tt.trader_id) AS traders, COUNT(DISTINCT tt.tx_id) AS tx, SUM(tt.amount_usd) AS vol,
+         MAX(tt.block_time) AS max_bt
+  FROM term_trades tt
   CROSS JOIN win_defs w
-  WHERE a.block_time >= a.anchor_bt - interval '1' hour * w.hrs
-    AND a.block_time <= a.anchor_bt
-  GROUP BY GROUPING SETS ((w.win, a.terminal), (w.win))
-)
-, launch_anchored AS (
-  SELECT *, MAX(block_time) OVER () AS anchor_bt
-  FROM launch_ix
+  WHERE tt.block_time >= now() - interval '1' hour * w.hrs
+  GROUP BY GROUPING SETS ((w.win, tt.terminal), (w.win))
 )
 , launch_agg AS (
   SELECT w.win AS win,
          COUNT(CASE WHEN kind = 'created' THEN 1 END) AS created,
          COUNT(CASE WHEN kind = 'migrated' THEN 1 END) AS migrated
-  FROM launch_anchored la
+  FROM launch_ix
   CROSS JOIN win_defs w
-  WHERE la.block_time >= la.anchor_bt - interval '1' hour * w.hrs
-    AND la.block_time <= la.anchor_bt
+  WHERE block_time >= now() - interval '1' hour * w.hrs
   GROUP BY w.win
 )
 SELECT 'window' AS section, wd.win AS bucket, '__total__' AS terminal,

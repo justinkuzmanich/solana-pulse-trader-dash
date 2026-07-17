@@ -55,14 +55,14 @@ fee_txs AS (
   SELECT f.terminal, aa.tx_id
   FROM solana.account_activity aa
   JOIN fee_accounts f ON aa.address = f.address
-  WHERE aa.block_time >= now() - interval '30' hour
+  WHERE aa.block_time >= now() - interval '24' hour
     AND aa.tx_success = true
     AND aa.balance_change > 0
   UNION
   SELECT f.terminal, aa.tx_id
   FROM solana.account_activity aa
   JOIN fee_accounts f ON aa.token_balance_owner = f.address
-  WHERE aa.block_time >= now() - interval '30' hour
+  WHERE aa.block_time >= now() - interval '24' hour
     AND aa.tx_success = true
     AND aa.token_balance_change > 0
 ),
@@ -70,7 +70,7 @@ term_trades AS (
   SELECT ft.terminal, t.tx_id, t.trader_id, t.amount_usd, t.block_time
   FROM dex_solana.trades t
   JOIN fee_txs ft ON t.tx_id = ft.tx_id
-  WHERE t.block_time >= now() - interval '30' hour
+  WHERE t.block_time >= now() - interval '24' hour
 ),
 launch_ix AS (
   SELECT block_time,
@@ -78,36 +78,26 @@ launch_ix AS (
               THEN 'created' ELSE 'migrated' END AS kind
   FROM solana.instruction_calls
   WHERE ((executing_account = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P' AND bytearray_substring(data, 1, 8) IN (0x181ec828051c0777, 0x9beae792ec9ea21e)))
-    AND block_time >= now() - interval '30' hour
+    AND block_time >= now() - interval '24' hour
     AND tx_success = true
 )
 , win_defs (win, hrs) AS (VALUES ('1h', 1), ('6h', 6), ('24h', 24))
-, anchored AS (
-  SELECT *, MAX(block_time) OVER () AS anchor_bt
-  FROM term_trades
-)
 , term_agg AS (
-  SELECT w.win AS win, COALESCE(a.terminal, '__total__') AS terminal,
-         COUNT(DISTINCT a.trader_id) AS traders, COUNT(DISTINCT a.tx_id) AS tx, SUM(a.amount_usd) AS vol,
-         MAX(a.block_time) AS max_bt
-  FROM anchored a
+  SELECT w.win AS win, COALESCE(tt.terminal, '__total__') AS terminal,
+         COUNT(DISTINCT tt.trader_id) AS traders, COUNT(DISTINCT tt.tx_id) AS tx, SUM(tt.amount_usd) AS vol,
+         MAX(tt.block_time) AS max_bt
+  FROM term_trades tt
   CROSS JOIN win_defs w
-  WHERE a.block_time >= a.anchor_bt - interval '1' hour * w.hrs
-    AND a.block_time <= a.anchor_bt
-  GROUP BY GROUPING SETS ((w.win, a.terminal), (w.win))
-)
-, launch_anchored AS (
-  SELECT *, MAX(block_time) OVER () AS anchor_bt
-  FROM launch_ix
+  WHERE tt.block_time >= now() - interval '1' hour * w.hrs
+  GROUP BY GROUPING SETS ((w.win, tt.terminal), (w.win))
 )
 , launch_agg AS (
   SELECT w.win AS win,
          COUNT(CASE WHEN kind = 'created' THEN 1 END) AS created,
          COUNT(CASE WHEN kind = 'migrated' THEN 1 END) AS migrated
-  FROM launch_anchored la
+  FROM launch_ix
   CROSS JOIN win_defs w
-  WHERE la.block_time >= la.anchor_bt - interval '1' hour * w.hrs
-    AND la.block_time <= la.anchor_bt
+  WHERE block_time >= now() - interval '1' hour * w.hrs
   GROUP BY w.win
 )
 SELECT 'window' AS section, wd.win AS bucket, '__total__' AS terminal,
