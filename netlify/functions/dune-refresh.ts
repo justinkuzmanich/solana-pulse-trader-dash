@@ -47,6 +47,9 @@ export default async () => {
         const rows = await executionRows(p.executionId);
         await processJob(job, rows, state);
         delete state.pending[job];
+        // clear a prior failure now that this job has succeeded — otherwise
+        // a stale lastError lingers forever and misreports current health
+        if (state.lastError?.job === job) delete state.lastError;
         log.push(`${job}: collected ${rows.length} rows`);
       } else if (TERMINAL_STATES.has(st.state)) {
         state.creditsUsed += st.execution_cost_credits ?? 0;
